@@ -1,0 +1,13 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\..\tools\common.props" />
+  <PropertyGroup>
+    <Description>Non-allocating Base64 encoder and decoded</Description>
+    <TargetFramework>netstandard1.1</TargetFramework>
+    <PackageTags>.NET non-allocating Base64 encoder and decoder</PackageTags>
+    <PackageIconUrl>http://go.microsoft.com/fwlink/?linkid=833199</PackageIconUrl>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\System.Binary\System.Binary.csproj" />
+    <ProjectReference Include="..\System.Text.Primitives\System.Text.Primitives.csproj" />
+  </ItemGroup>
+</Project>

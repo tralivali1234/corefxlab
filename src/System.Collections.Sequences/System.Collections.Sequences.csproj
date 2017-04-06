@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\..\tools\common.props" />
+  <PropertyGroup>
+    <Description>Non-allocating collections</Description>
+    <TargetFramework>netstandard1.1</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PackageTags>collections, non-allocating, corefxlab</PackageTags>
+    <PackageIconUrl>http://go.microsoft.com/fwlink/?linkid=833199</PackageIconUrl>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Memory" Version="$(SystemMemoryVersion)" />
+  </ItemGroup>
+</Project>

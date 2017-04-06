@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\..\tools\common.props" />
+  <PropertyGroup>
+    <Description>Efficient parsing, formatting, and encoding APIs</Description>
+    <Copyright>Microsoft Corporation, All rights reserved.</Copyright>
+    <TargetFramework>netstandard1.1</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PackageTags>.NET formatting parsing encoding UTF8</PackageTags>
+    <PackageIconUrl>http://go.microsoft.com/fwlink/?linkid=833199</PackageIconUrl>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Memory" Version="$(SystemMemoryVersion)" />
+  </ItemGroup>
+</Project>
