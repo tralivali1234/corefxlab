@@ -30,7 +30,7 @@ namespace System.Buffers
             return owner.Buffer;
         }
 
-        public static ReadOnlyBuffer<T> Empty { get; } = Internal.OwnerEmptyMemory<T>.Shared.Buffer;
+        public static ReadOnlyBuffer<T> Empty { get; } = Internal.OwnedEmptyBuffer<T>.Shared.Buffer;
 
         public int Length => _length;
 
@@ -48,24 +48,20 @@ namespace System.Buffers
             return new ReadOnlyBuffer<T>(_owner, _index + index, length);
         }
 
-        public ReadOnlySpan<T> Span {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get { return _owner.GetSpanInternal(_index, _length); }
-        }
+        public ReadOnlySpan<T> Span => _owner.Span.Slice(_index, _length);
 
         public DisposableReservation<T> Reserve()
         {
             return _owner.Buffer.Reserve();
         }
 
-        public unsafe BufferHandle Pin() => BufferHandle.Create(_owner, _index);
+        public BufferHandle Pin() => _owner.Pin(_index);
    
         public unsafe bool TryGetPointer(out void* pointer)
         {
-            if (!_owner.TryGetPointerInternal(out pointer)) {
+            if (!_owner.TryGetPointerAt(_index, out pointer)) {
                 return false;
             }
-            pointer = Buffer<T>.Add(pointer, _index);
             return true;
         }
 

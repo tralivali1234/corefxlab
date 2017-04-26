@@ -36,7 +36,7 @@ namespace System.Buffers
             return owner.Buffer;
         }
 
-        public static Buffer<T> Empty { get; } = Internal.OwnerEmptyMemory<T>.Shared.Buffer;
+        public static Buffer<T> Empty { get; } = Internal.OwnedEmptyBuffer<T>.Shared.Buffer;
 
         public int Length => _length;
 
@@ -54,23 +54,11 @@ namespace System.Buffers
             return new Buffer<T>(_owner, _index + index, length);
         }
 
-        public Span<T> Span {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get { return _owner.GetSpanInternal(_index, _length); }
-        }
+        public Span<T> Span => _owner.Span.Slice(_index, _length);
 
         public DisposableReservation<T> Reserve() => new DisposableReservation<T>(_owner);
 
-        public unsafe BufferHandle Pin() => BufferHandle.Create(_owner, _index);
-
-        public unsafe bool TryGetPointer(out void* pointer)
-        {
-            if (!_owner.TryGetPointerInternal(out pointer)) {
-                return false;
-            }
-            pointer = Add(pointer, _index);
-            return true;
-        }
+        public BufferHandle Pin() => _owner.Pin(_index);
 
         public bool TryGetArray(out ArraySegment<T> buffer)
         {
@@ -81,9 +69,13 @@ namespace System.Buffers
             return true;
         }
 
-        internal static unsafe void* Add(void* pointer, int offset)
+        public unsafe bool TryGetPointer(out void* pointer)
         {
-            return (byte*)pointer + ((ulong)Unsafe.SizeOf<T>() * (ulong)offset);
+            if (!_owner.TryGetPointerAt(_index, out pointer))
+            {
+                return false;
+            }
+            return true;
         }
 
         public T[] ToArray() => Span.ToArray();

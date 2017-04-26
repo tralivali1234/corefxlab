@@ -5,6 +5,8 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
+using System.Threading;
+
 namespace System.IO.Pipelines
 {
     /// <summary>
@@ -12,6 +14,9 @@ namespace System.IO.Pipelines
     /// </summary>
     internal class Pipe : IPipe, IPipeReader, IPipeWriter, IReadableBufferAwaiter, IWritableBufferAwaiter
     {
+        private static readonly Action<object> _signalReaderAwaitable = state => ((Pipe)state).ReaderCancellationRequested();
+        private static readonly Action<object> _signalWriterAwaitable = state => ((Pipe)state).WriterCancellationRequested();
+
         // This sync objects protects the following state:
         // 1. _commitHead & _commitHeadIndex
         // 2. _length
@@ -85,8 +90,18 @@ namespace System.IO.Pipelines
             _maximumSizeLow = options.MaximumSizeLow;
             _readerScheduler = options.ReaderScheduler ?? InlineScheduler.Default;
             _writerScheduler = options.WriterScheduler ?? InlineScheduler.Default;
+            ResetState();
+        }
+
+        private void ResetState()
+        {
             _readerAwaitable = new PipeAwaitable(completed: false);
             _writerAwaitable = new PipeAwaitable(completed: true);
+            _readerCompletion = default(PipeCompletion);
+            _writerCompletion = default(PipeCompletion);
+            _commitHeadIndex = 0;
+            _currentWriteLength = 0;
+            _length = 0;
         }
 
         internal Buffer<byte> Buffer => _writingHead?.Buffer.Slice(_writingHead.End, _writingHead.WritableBytes) ?? Buffer<byte>.Empty;
@@ -100,12 +115,12 @@ namespace System.IO.Pipelines
         {
             if (_writerCompletion.IsCompleted)
             {
-                ThrowHelper.ThrowInvalidOperationException(ExceptionResource.NoWritingAllowed, _writerCompletion.Location);
+                PipelinesThrowHelper.ThrowInvalidOperationException(ExceptionResource.NoWritingAllowed, _writerCompletion.Location);
             }
 
             if (minimumSize < 0)
             {
-                ThrowHelper.ThrowArgumentOutOfRangeException(ExceptionArgument.minimumSize);
+                PipelinesThrowHelper.ThrowArgumentOutOfRangeException(ExceptionArgument.minimumSize);
             }
 
             lock (_sync)
@@ -245,7 +260,7 @@ namespace System.IO.Pipelines
         {
             if (!_writingState.IsActive)
             {
-                ThrowHelper.ThrowInvalidOperationException(ExceptionResource.NotWritingNoAlloc);
+                PipelinesThrowHelper.ThrowInvalidOperationException(ExceptionResource.NotWritingNoAlloc);
             }
         }
 
@@ -299,7 +314,7 @@ namespace System.IO.Pipelines
             {
                 if (_writingHead == null)
                 {
-                    ThrowHelper.ThrowInvalidOperationException(ExceptionResource.AdvancingWithNoBuffer);
+                    PipelinesThrowHelper.ThrowInvalidOperationException(ExceptionResource.AdvancingWithNoBuffer);
                 }
 
                 Debug.Assert(!_writingHead.ReadOnly);
@@ -310,7 +325,7 @@ namespace System.IO.Pipelines
 
                 if (bufferIndex > buffer.Length)
                 {
-                    ThrowHelper.ThrowInvalidOperationException(ExceptionResource.AdvancingPastBufferSize);
+                    PipelinesThrowHelper.ThrowInvalidOperationException(ExceptionResource.AdvancingPastBufferSize);
                 }
 
                 _writingHead.End = bufferIndex;
@@ -318,13 +333,14 @@ namespace System.IO.Pipelines
             }
             else if (bytesWritten < 0)
             {
-                ThrowHelper.ThrowArgumentOutOfRangeException(ExceptionArgument.bytesWritten);
+                PipelinesThrowHelper.ThrowArgumentOutOfRangeException(ExceptionArgument.bytesWritten);
             } // and if zero, just do nothing; don't need to validate tail etc
         }
 
-        internal WritableBufferAwaitable FlushAsync()
+        internal WritableBufferAwaitable FlushAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
             Action awaitable;
+            CancellationTokenRegistration cancellationTokenRegistration;
             lock (_sync)
             {
                 if (_writingState.IsActive)
@@ -334,7 +350,11 @@ namespace System.IO.Pipelines
                 }
 
                 awaitable = _readerAwaitable.Complete();
+
+                cancellationTokenRegistration = _writerAwaitable.AttachToken(cancellationToken, _signalWriterAwaitable, this);
             }
+
+            cancellationTokenRegistration.Dispose();
 
             TrySchedule(_readerScheduler, awaitable);
 
@@ -365,7 +385,7 @@ namespace System.IO.Pipelines
         {
             if (_writingState.IsActive)
             {
-                ThrowHelper.ThrowInvalidOperationException(ExceptionResource.CompleteWriterActiveWriter, _writingState.Location);
+                PipelinesThrowHelper.ThrowInvalidOperationException(ExceptionResource.CompleteWriterActiveWriter, _writingState.Location);
             }
 
             _writerCompletion.TryComplete(exception);
@@ -416,11 +436,15 @@ namespace System.IO.Pipelines
                     continuation = _writerAwaitable.Complete();
                 }
 
-                // We reset the awaitable to not completed if we've consumed everything the producer produced so far
+                // We reset the awaitable to not completed if we've examined everything the producer produced so far
                 if (examined.Segment == _commitHead &&
                     examined.Index == _commitHeadIndex &&
                     !_writerCompletion.IsCompleted)
                 {
+                    if (!_writerAwaitable.IsCompleted)
+                    {
+                        PipelinesThrowHelper.ThrowInvalidOperationException(ExceptionResource.BackpressureDeadlock);
+                    }
                     _readerAwaitable.Reset();
                 }
 
@@ -445,7 +469,7 @@ namespace System.IO.Pipelines
         {
             if (_readingState.IsActive)
             {
-                ThrowHelper.ThrowInvalidOperationException(ExceptionResource.CompleteReaderActiveReader, _readingState.Location);
+                PipelinesThrowHelper.ThrowInvalidOperationException(ExceptionResource.CompleteReaderActiveReader, _readingState.Location);
             }
 
             _readerCompletion.TryComplete(exception);
@@ -489,13 +513,18 @@ namespace System.IO.Pipelines
             TrySchedule(_writerScheduler, awaitable);
         }
 
-        ReadableBufferAwaitable IPipeReader.ReadAsync()
+        ReadableBufferAwaitable IPipeReader.ReadAsync(CancellationToken token)
         {
+            CancellationTokenRegistration cancellationTokenRegistration;
             if (_readerCompletion.IsCompleted)
             {
-                ThrowHelper.ThrowInvalidOperationException(ExceptionResource.NoReadingAllowed, _readerCompletion.Location);
+                PipelinesThrowHelper.ThrowInvalidOperationException(ExceptionResource.NoReadingAllowed, _readerCompletion.Location);
             }
-
+            lock (_sync)
+            {
+                cancellationTokenRegistration= _readerAwaitable.AttachToken(token, _signalReaderAwaitable, this);
+            }
+            cancellationTokenRegistration.Dispose();
             return new ReadableBufferAwaitable(this);
         }
 
@@ -505,17 +534,21 @@ namespace System.IO.Pipelines
             {
                 if (_readerCompletion.IsCompleted)
                 {
-                    ThrowHelper.ThrowInvalidOperationException(ExceptionResource.NoReadingAllowed, _readerCompletion.Location);
+                    PipelinesThrowHelper.ThrowInvalidOperationException(ExceptionResource.NoReadingAllowed, _readerCompletion.Location);
                 }
 
                 result = new ReadResult();
-                if (!_readerAwaitable.IsCompleted)
+                if (_length > 0 || _readerAwaitable.IsCompleted)
                 {
-                    return false;
+                    GetResult(ref result);
+                    return true;
                 }
 
-                GetResult(ref result);
-                return true;
+                if(_readerAwaitable.HasContinuation)
+                {
+                    PipelinesThrowHelper.ThrowInvalidOperationException(ExceptionResource.AlreadyReading);
+                }
+                return false;
             }
         }
 
@@ -529,24 +562,27 @@ namespace System.IO.Pipelines
 
         private void Dispose()
         {
-            if (_disposed)
+            lock (_sync)
             {
-                return;
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _disposed = true;
+                // Return all segments
+                var segment = _readHead;
+                while (segment != null)
+                {
+                    var returnSegment = segment;
+                    segment = segment.Next;
+
+                    returnSegment.Dispose();
+                }
+
+                _readHead = null;
+                _commitHead = null;
             }
-
-            _disposed = true;
-            // Return all segments
-            var segment = _readHead;
-            while (segment != null)
-            {
-                var returnSegment = segment;
-                segment = segment.Next;
-
-                returnSegment.Dispose();
-            }
-
-            _readHead = null;
-            _commitHead = null;
         }
 
         // IReadableBufferAwaiter members
@@ -567,7 +603,7 @@ namespace System.IO.Pipelines
         {
             if (!_readerAwaitable.IsCompleted)
             {
-                ThrowHelper.ThrowInvalidOperationException(ExceptionResource.GetResultNotCompleted);
+                PipelinesThrowHelper.ThrowInvalidOperationException(ExceptionResource.GetResultNotCompleted);
             }
 
             var result = new ReadResult();
@@ -585,13 +621,15 @@ namespace System.IO.Pipelines
                 result.ResultFlags |= ResultFlags.Completed;
             }
 
-            if (_readerAwaitable.ObserveCancelation())
+            var isCancelled = _readerAwaitable.ObserveCancelation();
+            if (isCancelled)
             {
                 result.ResultFlags |= ResultFlags.Cancelled;
             }
 
             // No need to read end if there is no head
             var head = _readHead;
+
             if (head != null)
             {
                 // Reading commit head shared with writer
@@ -603,7 +641,14 @@ namespace System.IO.Pipelines
                 result.ResultBuffer.BufferStart.Index = head.Start;
             }
 
-            _readingState.Begin(ExceptionResource.AlreadyReading);
+            if (isCancelled)
+            {
+                _readingState.BeginTentative(ExceptionResource.AlreadyReading);
+            }
+            else
+            {
+                _readingState.Begin(ExceptionResource.AlreadyReading);
+            }
         }
 
         // IWritableBufferAwaiter members
@@ -617,7 +662,7 @@ namespace System.IO.Pipelines
             {
                 if (!_writerAwaitable.IsCompleted)
                 {
-                    ThrowHelper.ThrowInvalidOperationException(ExceptionResource.GetResultNotCompleted);
+                    PipelinesThrowHelper.ThrowInvalidOperationException(ExceptionResource.GetResultNotCompleted);
                 }
 
                 // Change the state from to be cancelled -> observed
@@ -644,7 +689,38 @@ namespace System.IO.Pipelines
             TrySchedule(_writerScheduler, awaitable);
         }
 
+        private void ReaderCancellationRequested()
+        {
+            Action action;
+            lock (_sync)
+            {
+                action = _readerAwaitable.Cancel();
+            }
+            TrySchedule(_readerScheduler, action);
+        }
+
+        private void WriterCancellationRequested()
+        {
+            Action action;
+            lock (_sync)
+            {
+                action = _writerAwaitable.Cancel();
+            }
+            TrySchedule(_writerScheduler, action);
+        }
+
         public IPipeReader Reader => this;
         public IPipeWriter Writer => this;
+
+        public void Reset()
+        {
+            if (!_disposed)
+            {
+                throw new InvalidOperationException("Both reader and writer need to be completed to be able to reset ");
+            }
+
+            _disposed = false;
+            ResetState();
+        }
     }
 }

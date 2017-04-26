@@ -84,8 +84,7 @@ namespace System.IO.Pipelines.Tests
         {
             var gotData = _pipe.Reader.TryRead(out var result);
             Assert.False(gotData);
-            // Throws because we didn't read any data
-            Assert.Throws<InvalidOperationException>(() => _pipe.Reader.Advance(default(ReadCursor)));
+            _pipe.Reader.Advance(default(ReadCursor));
         }
 
         [Fact]
@@ -276,7 +275,7 @@ namespace System.IO.Pipelines.Tests
             _pipe.Reader.Advance(buffer.End);
 
             // Now write 0 and advance 0
-            await _pipe.Writer.WriteAsync(Array.Empty<byte>());
+            await _pipe.Writer.WriteAsync(new byte [] {});
             result = await _pipe.Reader.ReadAsync();
             _pipe.Reader.Advance(result.Buffer.End);
 
@@ -301,135 +300,7 @@ namespace System.IO.Pipelines.Tests
             Assert.False(awaitable.IsCompleted);
         }
 
-        [Fact]
-        public async Task CancellingPendingReadBeforeReadAsync()
-        {
-            _pipe.Reader.CancelPendingRead();
 
-            var result = await _pipe.Reader.ReadAsync();
-            var buffer = result.Buffer;
-            _pipe.Reader.Advance(buffer.End);
-
-            Assert.False(result.IsCompleted);
-            Assert.True(result.IsCancelled);
-            Assert.True(buffer.IsEmpty);
-
-            var bytes = Encoding.ASCII.GetBytes("Hello World");
-            var output = _pipe.Writer.Alloc();
-            output.Write(bytes);
-            await output.FlushAsync();
-
-            result = await _pipe.Reader.ReadAsync();
-            buffer = result.Buffer;
-
-            Assert.Equal(11, buffer.Length);
-            Assert.False(result.IsCancelled);
-            Assert.True(buffer.IsSingleSpan);
-            var array = new byte[11];
-            buffer.First.Span.CopyTo(array);
-            Assert.Equal("Hello World", Encoding.ASCII.GetString(array));
-
-            _pipe.Reader.Advance(buffer.Start, buffer.Start);
-        }
-
-        [Fact]
-        public async Task CancellingBeforeAdvance()
-        {
-            var bytes = Encoding.ASCII.GetBytes("Hello World");
-            var output = _pipe.Writer.Alloc();
-            output.Write(bytes);
-            await output.FlushAsync();
-
-            var result = await _pipe.Reader.ReadAsync();
-            var buffer = result.Buffer;
-
-            Assert.Equal(11, buffer.Length);
-            Assert.False(result.IsCancelled);
-            Assert.True(buffer.IsSingleSpan);
-            var array = new byte[11];
-            buffer.First.Span.CopyTo(array);
-            Assert.Equal("Hello World", Encoding.ASCII.GetString(array));
-
-            _pipe.Reader.CancelPendingRead();
-
-            _pipe.Reader.Advance(buffer.End);
-
-            var awaitable = _pipe.Reader.ReadAsync();
-
-            Assert.True(awaitable.IsCompleted);
-
-            result = await awaitable;
-
-            Assert.True(result.IsCancelled);
-
-            _pipe.Reader.Advance(buffer.Start, buffer.Start);
-        }
-
-        [Fact]
-        public async Task CancellingPendingAfterReadAsync()
-        {
-            var bytes = Encoding.ASCII.GetBytes("Hello World");
-            var output = _pipe.Writer.Alloc();
-            output.Write(bytes);
-
-            Func<Task> taskFunc = async () =>
-            {
-                var result = await _pipe.Reader.ReadAsync();
-                var buffer = result.Buffer;
-                _pipe.Reader.Advance(buffer.End);
-
-                Assert.False(result.IsCompleted);
-                Assert.True(result.IsCancelled);
-                Assert.True(buffer.IsEmpty);
-
-                await output.FlushAsync();
-
-                result = await _pipe.Reader.ReadAsync();
-                buffer = result.Buffer;
-
-                Assert.Equal(11, buffer.Length);
-                Assert.True(buffer.IsSingleSpan);
-                Assert.False(result.IsCancelled);
-                var array = new byte[11];
-                buffer.First.Span.CopyTo(array);
-                Assert.Equal("Hello World", Encoding.ASCII.GetString(array));
-                _pipe.Reader.Advance(result.Buffer.End, result.Buffer.End);
-
-                _pipe.Reader.Complete();
-            };
-
-            var task = taskFunc();
-
-            _pipe.Reader.CancelPendingRead();
-
-            await task;
-
-            _pipe.Writer.Complete();
-        }
-
-        [Fact]
-        public async Task WriteAndCancellingPendingReadBeforeReadAsync()
-        {
-            var bytes = Encoding.ASCII.GetBytes("Hello World");
-            var output = _pipe.Writer.Alloc();
-            output.Write(bytes);
-            await output.FlushAsync();
-
-            _pipe.Reader.CancelPendingRead();
-
-            var result = await _pipe.Reader.ReadAsync();
-            var buffer = result.Buffer;
-
-            Assert.False(result.IsCompleted);
-            Assert.True(result.IsCancelled);
-            Assert.False(buffer.IsEmpty);
-            Assert.Equal(11, buffer.Length);
-            Assert.True(buffer.IsSingleSpan);
-            var array = new byte[11];
-            buffer.First.Span.CopyTo(array);
-            Assert.Equal("Hello World", Encoding.ASCII.GetString(array));
-            _pipe.Reader.Advance(buffer.End, buffer.End);
-        }
 
         [Fact]
         public async Task ReadingCanBeCancelled()
@@ -661,10 +532,11 @@ namespace System.IO.Pipelines.Tests
 
             }
 
-            private class DisposeTrackingOwnedMemory : OwnedBuffer<byte>
+            private class DisposeTrackingOwnedMemory : ReferenceCountedBuffer<byte>
             {
-                public DisposeTrackingOwnedMemory(byte[] array) : base(array)
+                public DisposeTrackingOwnedMemory(byte[] array)
                 {
+                    _array = array;
                 }
 
                 protected override void Dispose(bool disposing)
@@ -673,8 +545,33 @@ namespace System.IO.Pipelines.Tests
                     base.Dispose(disposing);
                 }
 
+                protected override bool TryGetArrayInternal(out ArraySegment<byte> buffer)
+                {
+                    if (IsDisposed) PipelinesThrowHelper.ThrowObjectDisposedException(nameof(DisposeTrackingBufferPool));
+                    buffer = new ArraySegment<byte>(_array);
+                    return true;
+                }
+
+                protected override unsafe bool TryGetPointerAt(int index, out void* pointer)
+                {
+                    pointer = null;
+                    return false;
+                }
+
                 public int Disposed { get; set; }
 
+                public override int Length => _array.Length;
+
+                public override Span<byte> Span
+                {
+                    get
+                    {
+                        if (IsDisposed) PipelinesThrowHelper.ThrowObjectDisposedException(nameof(DisposeTrackingBufferPool));
+                        return _array;
+                    }
+                }
+
+                byte[] _array;
             }
         }
     }

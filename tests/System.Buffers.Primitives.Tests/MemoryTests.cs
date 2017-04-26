@@ -54,11 +54,6 @@ namespace System.Buffers.Tests
                     Assert.Throws<InvalidOperationException>(() => { // memory is reserved; premature dispose check fires
                         owned.Dispose();
                     });
-                    Assert.Throws<ObjectDisposedException>(() => {
-                        // memory is disposed
-                        Span<byte> span = memorySlice.Span;
-                        span[0] = 255;
-                    });
                 }
                 finally
                 {
@@ -75,6 +70,21 @@ namespace System.Buffers.Tests
             });
         }
 
+
+        [Fact]
+        public void TestThrowOnAccessAfterDipose()
+        {
+            var array = new byte[1024];
+            OwnedBuffer<byte> owned = array;
+            var span = owned.Span;
+            Assert.Equal(array.Length, span.Length);
+
+            owned.Dispose();
+
+            Assert.Throws<ObjectDisposedException>(() => {
+                var spanDisposed = owned.Span;
+            });
+        }
 
         [Fact(Skip = "This needs to be fixed and re-enabled or removed.")]
         public void RacyAccess()
@@ -157,72 +167,19 @@ namespace System.Buffers.Tests
         }
         #endregion
 
-        public static IEnumerable<object[]> ReservationPerformanceData =>
-            MakePermutations(MakeArray(1,4,10),
-                             MakeArray(100,1000),
-                             MakeArray(1,2,4,8,12),
-                             MakeArray(ReferenceCountingMethod.None,
-                                       ReferenceCountingMethod.Interlocked,
-                                       ReferenceCountingMethod.ReferenceCounter));
-
-
-        [MemberData(nameof(ReservationPerformanceData))]
-        [Benchmark]
-        public void ReservationPerformance(int number, int size, int threads, ReferenceCountingMethod m)
-        {
-            var iterations = 1000000;
-
-            var o = ReferenceCountingSettings.OwnedMemory;
-            ReferenceCountingSettings.OwnedMemory = m;
-
-            Benchmark.Iterate( () => {
-                var owners   = new OwnedBuffer<byte>[number];
-                var memories = new Buffer<byte>[owners.Length];
-
-                for (int i = 0; i < owners.Length; i++) {
-                    owners[i] = new AutoPooledMemory(size);
-                    memories[i] = owners[i].Buffer;
-                }
-
-                var tasks = new List<Task>(threads);
-                for (int t = 0; t < threads; t++) {
-                    tasks.Add(Task.Run(() => {
-                        for (int k = 0; k < iterations / owners.Length; k++) {
-                            for (int i = 0; i < owners.Length; i++) {
-                                using (var reserve = memories[i].Reserve()) {
-                                    var s = reserve.Span;
-                                    for (int j = 0; j < owners.Length; j++) {
-                                        s[j] = (byte)1;
-                                    }
-                                }
-                            }
-                        }
-                    }));
-                }
-
-                Task.WaitAll(tasks.ToArray());
-
-                for (int i = 0; i < owners.Length; i++) {
-                    owners[i].Release();
-                }
-            });
-
-            ReferenceCountingSettings.OwnedMemory = o;
-        }
-
         [Fact]
         public unsafe void ReferenceCounting()
         {
             var owned = new CustomMemory();
             var memory = owned.Buffer;
             Assert.Equal(0, owned.OnZeroRefencesCount);
-            Assert.False(owned.HasOutstandingReferences);
+            Assert.False(owned.IsRetained);
             using (memory.Reserve()) {
                 Assert.Equal(0, owned.OnZeroRefencesCount);
-                Assert.True(owned.HasOutstandingReferences);
+                Assert.True(owned.IsRetained);
             }
             Assert.Equal(1, owned.OnZeroRefencesCount);
-            Assert.False(owned.HasOutstandingReferences);
+            Assert.False(owned.IsRetained);
         }
 
         [Fact]
@@ -245,11 +202,11 @@ namespace System.Buffers.Tests
             var array = new byte[1024];
             OwnedBuffer<byte> owned = array;
             var memory = owned.Buffer;
-            Assert.False(owned.HasOutstandingReferences);
+            Assert.False(owned.IsRetained);
             var h = memory.Pin();
-            Assert.True(owned.HasOutstandingReferences);
+            Assert.True(owned.IsRetained);
             h.Free();
-            Assert.False(owned.HasOutstandingReferences);
+            Assert.False(owned.IsRetained);
         }
 
         [Fact]
@@ -266,15 +223,15 @@ namespace System.Buffers.Tests
             OwnedBuffer<byte> owned = array;
             var memory = owned.Buffer;
             var h = memory.Pin();
-            Assert.True(owned.HasOutstandingReferences);
-            owned.AddReference();
-            Assert.True(owned.HasOutstandingReferences);
+            Assert.True(owned.IsRetained);
+            owned.Retain();
+            Assert.True(owned.IsRetained);
             h.Free();
-            Assert.True(owned.HasOutstandingReferences);
+            Assert.True(owned.IsRetained);
             h.Free();
-            Assert.True(owned.HasOutstandingReferences);
+            Assert.True(owned.IsRetained);
             owned.Release();
-            Assert.False(owned.HasOutstandingReferences);
+            Assert.False(owned.IsRetained);
         }
 
 
@@ -306,24 +263,65 @@ namespace System.Buffers.Tests
         }
     }
 
-    class CustomMemory : OwnedBuffer<byte>
+    class CustomMemory : ReferenceCountedBuffer<byte>
     {
-        int _onZeroRefencesCount;
-
-        public CustomMemory() : base(new byte[256], 0, 256) { }
+        public CustomMemory()
+        {
+            _array = new byte[255];
+        }
 
         public int OnZeroRefencesCount => _onZeroRefencesCount;
+
+        public override int Length => _array.Length;
+
+        public override Span<byte> Span
+        {
+            get
+            {
+                if (IsDisposed) BufferPrimitivesThrowHelper.ThrowObjectDisposedException(nameof(CustomMemory));
+                return _array;
+            }
+        }
 
         protected override void OnZeroReferences()
         {
             _onZeroRefencesCount++;
         }
+
+        protected override bool TryGetArrayInternal(out ArraySegment<byte> buffer)
+        {
+            if (IsDisposed) BufferPrimitivesThrowHelper.ThrowObjectDisposedException(nameof(CustomMemory));
+            buffer = new ArraySegment<byte>(_array);
+            return true;
+        }
+
+        protected override unsafe bool TryGetPointerAt(int index, out void* pointer)
+        {
+            pointer = null;
+            return false;
+        }
+
+        int _onZeroRefencesCount;
+        byte[] _array;
     }
 
-    class AutoDisposeMemory<T> : OwnedBuffer<T>
+    class AutoDisposeMemory<T> : ReferenceCountedBuffer<T>
     {
-        public AutoDisposeMemory(T[] array) : base(array, 0, array.Length) {
-            AddReference();
+        public AutoDisposeMemory(T[] array)
+        {
+            _array = array;
+            Retain();
+        }
+
+        public override int Length => _array.Length;
+
+        public override Span<T> Span
+        {
+            get
+            {
+                if (IsDisposed) BufferPrimitivesThrowHelper.ThrowObjectDisposedException(nameof(AutoDisposeMemory<T>));
+                return _array;
+            }
         }
 
         protected override void Dispose(bool disposing)
@@ -335,6 +333,21 @@ namespace System.Buffers.Tests
         {
             Dispose();
         }
+
+        protected override bool TryGetArrayInternal(out ArraySegment<T> buffer)
+        {
+            if (IsDisposed) BufferPrimitivesThrowHelper.ThrowObjectDisposedException(nameof(AutoDisposeMemory<T>));
+            buffer = new ArraySegment<T>(_array);
+            return true;
+        }
+
+        protected override unsafe bool TryGetPointerAt(int index, out void* pointer)
+        {
+            pointer = null;
+            return false;
+        }
+
+        protected T[] _array;
     }
 
     class AutoPooledMemory : AutoDisposeMemory<byte>
@@ -344,7 +357,8 @@ namespace System.Buffers.Tests
 
         protected override void Dispose(bool disposing)
         {
-            ArrayPool<byte>.Shared.Return(Array);
+            ArrayPool<byte>.Shared.Return(_array);
+            _array = null;
             base.Dispose(disposing);
         }
     }
