@@ -1,204 +1,84 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+﻿// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
-using System.Collections.Sequences;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Numerics;
+using System.Runtime.InteropServices;
+using System.Buffers.Operations;
 
 namespace System.Buffers
 {
-    public static class BufferExtensions
+    public static class MemoryListExtensions
     {
-        public static ReadOnlySpan<byte> ToSpan<T>(this T bufferSequence) where T : ISequence<ReadOnlyBuffer<byte>>
-        {
-            Position position = Position.First;
-            ReadOnlyBuffer<byte> buffer;
-            ResizableArray<byte> array = new ResizableArray<byte>(1024); 
-            while (bufferSequence.TryGet(ref position, out buffer))
-            {
-                array.AddAll(buffer.Span);
-            }
-            array.Resize(array.Count);
-            return array.Items.Slice(0, array.Count);
-        }
-
         // span creation helpers:
-
-        /// <summary>
-        /// Creates a new slice over the portion of the target array segment.
-        /// </summary>
-        /// <param name="arraySegment">The target array segment.</param>
-        /// </exception>
-        public static Span<T> Slice<T>(this ArraySegment<T> arraySegment)
-        {
-            return new Span<T>(arraySegment.Array, arraySegment.Offset, arraySegment.Count);
-        }
-
-        /// <summary>
-        /// Creates a new slice over the portion of the target array.
-        /// </summary>
-        /// <param name="array">The target array.</param>
-        /// <exception cref="System.ArgumentException">
-        /// Thrown if the 'array' parameter is null.
-        /// </exception>
-        public static Span<T> Slice<T>(this T[] array)
-        {
-            return new Span<T>(array);
-        }
-
-        /// <summary>
-        /// Creates a new slice over the portion of the target array beginning
-        /// at 'start' index.
-        /// </summary>
-        /// <param name="array">The target array.</param>
-        /// <param name="start">The index at which to begin the slice.</param>
-        /// <exception cref="System.ArgumentException">
-        /// Thrown if the 'array' parameter is null.
-        /// </exception>
-        /// <exception cref="System.ArgumentOutOfRangeException">
-        /// Thrown when the specified start index is not in range (&lt;0 or &gt;&eq;length).
-        /// </exception>
-        public static Span<T> Slice<T>(this T[] array, int start)
-        {
-            return new Span<T>(array, start);
-        }
-
-        /// <summary>
-        /// Creates a new slice over the portion of the target array beginning
-        /// at 'start' index and with 'length' items.
-        /// </summary>
-        /// <param name="array">The target array.</param>
-        /// <param name="start">The index at which to begin the slice.</param>
-        /// <param name="length">The number of items in the new slice.</param>
-        /// <exception cref="System.ArgumentException">
-        /// Thrown if the 'array' parameter is null.
-        /// </exception>
-        /// <exception cref="System.ArgumentOutOfRangeException">
-        /// Thrown when the specified start or end index is not in range (&lt;0 or &gt;&eq;length).
-        /// </exception>
-        public static Span<T> Slice<T>(this T[] array, int start, int length)
-        {
-            return new Span<T>(array, start, length);
-        }
-
-        /// <summary>
-        /// Creates a new readonly span over the portion of the target string.
-        /// </summary>
-        /// <param name="text">The target string.</param>
-        /// <exception cref="System.ArgumentNullException">Thrown when <paramref name="text"/> is null.</exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static unsafe ReadOnlySpan<char> Slice(this string text)
+        public static long IndexOf(this ReadOnlySequenceSegment<byte> list, ReadOnlySpan<byte> value)
         {
-            if (text == null)
-                throw new ArgumentNullException(nameof(text));
-
-            int textLength = text.Length;
-
-            if (textLength == 0) return ReadOnlySpan<char>.Empty;
-
-            fixed (char* charPointer = text)
-            {
-                return ReadOnlySpan<char>.DangerousCreate(text, ref *charPointer, textLength);
-            }
-        }
-
-        /// <summary>
-        /// Creates a new readonly span over the portion of the target string, beginning at 'start'.
-        /// </summary>
-        /// <param name="text">The target string.</param>
-        /// <param name="start">The index at which to begin this slice.</param>
-        /// <exception cref="System.ArgumentNullException">Thrown when <paramref name="text"/> is null.</exception>
-        /// <exception cref="System.ArgumentOutOfRangeException">
-        /// Thrown when the specified <paramref name="start"/> index is not in range (&lt;0 or &gt;Length).
-        /// </exception>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static unsafe ReadOnlySpan<char> Slice(this string text, int start)
-        {
-            if (text == null)
-                throw new ArgumentNullException(nameof(text));
-
-            int textLength = text.Length;
-
-            if ((uint) start > (uint) textLength)
-                throw new ArgumentOutOfRangeException(nameof(start));
-
-            if (textLength - start == 0) return ReadOnlySpan<char>.Empty;
-
-            fixed (char* charPointer = text)
-            {
-                return ReadOnlySpan<char>.DangerousCreate(text, ref *(charPointer + start), textLength - start);
-            }
-        }
-
-        /// <summary>
-        /// Creates a new readonly span over the portion of the target string, beginning at <paramref name="start"/>, of given <paramref name="length"/>.
-        /// </summary>
-        /// <param name="text">The target string.</param>
-        /// <param name="start">The index at which to begin this slice.</param>
-        /// <param name="length">The number of items in the span.</param>
-        /// <exception cref="System.ArgumentNullException">Thrown when <paramref name="text"/> is null.</exception>
-        /// <exception cref="System.ArgumentOutOfRangeException">
-        /// Thrown when the specified <paramref name="start"/> or end index is not in range (&lt;0 or &gt;=Length).
-        /// </exception>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static unsafe ReadOnlySpan<char> Slice(this string text, int start, int length)
-        {
-            if (text == null)
-                throw new ArgumentNullException(nameof(text));
-
-            int textLength = text.Length;
-
-            if ((uint)start > (uint)textLength || (uint)length > (uint)(textLength - start))
-                throw new ArgumentOutOfRangeException(nameof(start));
-
-            if (length == 0) return ReadOnlySpan<char>.Empty;
-
-            fixed (char* charPointer = text)
-            {
-                return ReadOnlySpan<char>.DangerousCreate(text, ref *(charPointer + start), length);
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int IndexOf(this IReadOnlyBufferList<byte> sequence, ReadOnlySpan<byte> value)
-        {
-            var first = sequence.First.Span;
+            var first = list.Memory.Span;
             var index = first.IndexOf(value);
             if (index != -1) return index;
 
-            var rest = sequence.Rest;
+            var rest = list.Next;
             if (rest == null) return -1;
 
-            return IndexOfStraddling(first, sequence.Rest, value);
+            return IndexOfStraddling(first, list.Next, value);
         }
 
-        public static int IndexOf(this IReadOnlyBufferList<byte> sequence, byte value)
+        public static int CopyTo(this ReadOnlySequenceSegment<byte> list, Span<byte> destination)
         {
-            var first = sequence.First.Span;
-            var index = first.IndexOf(value);
-            if (index != -1) return index;
+            var current = list.Memory.Span;
+            int copied = 0;
 
-            var rest = sequence.Rest;
-            if (rest == null) return -1;
+            while (destination.Length > 0)
+            {
+                if (current.Length >= destination.Length)
+                {
+                    current.Slice(0, destination.Length).CopyTo(destination);
+                    copied += destination.Length;
+                    return copied;
+                }
+                else
+                {
+                    current.CopyTo(destination);
+                    copied += current.Length;
+                    destination = destination.Slice(current.Length);
+                }
+            }
+            return copied;
+        }
 
-            index = rest.IndexOf(value);
-            if (index != -1) return first.Length + index;
+        public static SequencePosition? PositionOf(this ReadOnlySequenceSegment<byte> list, byte value)
+        {
+            while (list != null)
+            {
+                var current = list.Memory.Span;
+                var index = current.IndexOf(value);
+                if (index != -1) return new SequencePosition(list, index);
+                list = list.Next;
+            }
+            return null;
+        }
 
-            return -1;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static (T segment, int index) Get<T>(this SequencePosition position)
+        {
+            var segment = position.GetObject() == null ? default : (T)position.GetObject();
+            return (segment, position.GetInteger());
         }
 
         // TODO (pri 3): I am pretty sure this whole routine can be written much better
 
         // searches values that potentially straddle between first and rest
-        internal static int IndexOfStraddling(this ReadOnlySpan<byte> first, IReadOnlyBufferList<byte> rest, ReadOnlySpan<byte> value)
+        internal static long IndexOfStraddling(this ReadOnlySpan<byte> first, ReadOnlySequenceSegment<byte> rest, ReadOnlySpan<byte> value)
         {
             Debug.Assert(first.IndexOf(value) == -1);
             if (rest == null) return -1;
 
             // we only need to search the end of the first buffer. More precisely, only up to value.Length - 1 bytes in the first buffer
             // The other bytes in first, were already search and presumably did not match
-            int bytesToSkipFromFirst = 0; 
+            int bytesToSkipFromFirst = 0;
             if (first.Length > value.Length - 1)
             {
                 bytesToSkipFromFirst = first.Length - value.Length - 1;
@@ -215,27 +95,17 @@ namespace System.Buffers
                 bytesToSearchAgain = first;
             }
 
-            int index;
+            long index;
 
             // now combine the bytes from the end of the first buffer with bytes in the rest, and serarch the combined buffer
             // this check is a small optimization: if the first byte from the value does not exist in the bytesToSearchAgain, there is no reason to combine
             if (bytesToSearchAgain.IndexOf(value[0]) != -1)
             {
-                Span<byte> combined;
                 var combinedBufferLength = value.Length << 1;
-                if (combinedBufferLength < 128)
-                {
-                    unsafe
-                    {
-                        byte* temp = stackalloc byte[combinedBufferLength];
-                        combined = new Span<byte>(temp, combinedBufferLength);
-                    }
-                }
-                else
-                {
-                    // TODO (pri 3): I think this could be eliminated by chunking values
-                    combined = new byte[combinedBufferLength];
-                }
+                var combined = combinedBufferLength < 128 ?
+                                        stackalloc byte[combinedBufferLength] :
+                                        // TODO (pri 3): I think this could be eliminated by chunking values
+                                        new byte[combinedBufferLength];
 
                 bytesToSearchAgain.CopyTo(combined);
                 int combinedLength = bytesToSearchAgain.Length + rest.CopyTo(combined.Slice(bytesToSearchAgain.Length));
@@ -256,94 +126,135 @@ namespace System.Buffers
 
             return -1;
         }
+    }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int IndexOf(this ReadOnlyBuffer<byte> buffer, ReadOnlySpan<byte> values)
+    public static class BufferExtensions
+    {
+        const int stackLength = 32;
+
+        public static void Pipe(this IBufferOperation transformation, ReadOnlySequence<byte> source, IBufferWriter<byte> destination)
         {
-            return SpanExtensions.IndexOf(buffer.Span, values);
+            int afterMergeSlice = 0;
+
+            // Assign 'remainder' to something formally stack-referring.
+            // The default classification is "returnable, not referring to stack", we want the opposite in this case.
+            ReadOnlySpan<byte> remainder = stackalloc byte[0];
+            Span<byte> stackSpan = stackalloc byte[stackLength];
+
+            SequencePosition poisition = default;
+            while (source.TryGet(ref poisition, out var sourceBuffer))
+            {
+                Span<byte> outputSpan = destination.GetSpan();
+                ReadOnlySpan<byte> sourceSpan = sourceBuffer.Span;
+
+                if (!remainder.IsEmpty)
+                {
+                    int leftOverBytes = remainder.Length;
+                    remainder.CopyTo(stackSpan);
+                    int amountToCopy = Math.Min(sourceSpan.Length, stackSpan.Length - leftOverBytes);
+                    sourceSpan.Slice(0, amountToCopy).CopyTo(stackSpan.Slice(leftOverBytes));
+                    int amountOfData = leftOverBytes + amountToCopy;
+
+                    Span<byte> spanToTransform = stackSpan.Slice(0, amountOfData);
+
+                    TryTransformWithRemainder:
+                    OperationStatus status = transformation.Execute(spanToTransform, outputSpan, out int bytesConsumed, out int bytesWritten);
+                    if (status != OperationStatus.Done)
+                    {
+                        destination.Advance(bytesWritten);
+                        spanToTransform = spanToTransform.Slice(bytesConsumed);
+
+                        if (status == OperationStatus.DestinationTooSmall)
+                        {
+                            outputSpan = destination.GetSpan();
+
+                            if (outputSpan.Length - bytesWritten < 3)
+                            {
+                                return; // no more output space, user decides what to do.
+                            }
+                            goto TryTransformWithRemainder;
+                        }
+                        else
+                        {
+                            if (status == OperationStatus.InvalidData)
+                            {
+                                continue; // source buffer contains invalid bytes, user decides what to do for fallback
+                            }
+
+                            // at this point, status = TransformationStatus.NeedMoreSourceData
+                            // left over bytes in stack span
+                            remainder = spanToTransform;
+                        }
+                        continue;
+                    }
+                    else    // success
+                    {
+                        afterMergeSlice = bytesConsumed - remainder.Length;
+                        remainder = Span<byte>.Empty;
+                        destination.Advance(bytesWritten);
+                        outputSpan = destination.GetSpan();
+                    }
+                }
+
+                TryTransform:
+                OperationStatus result = transformation.Execute(sourceSpan.Slice(afterMergeSlice), outputSpan, out int consumed, out int written);
+                afterMergeSlice = 0;
+                destination.Advance(written);
+                sourceSpan = sourceSpan.Slice(consumed);
+
+                if (result == OperationStatus.Done) continue;
+
+                // Not successful
+                if (result == OperationStatus.DestinationTooSmall)
+                {
+                    destination.GetMemory();  // output buffer is too small
+                    outputSpan = destination.GetSpan();
+                    if (outputSpan.Length - written < 3)
+                    {
+                        return; // no more output space, user decides what to do.
+                    }
+                    goto TryTransform;
+                }
+                else
+                {
+                    if (result == OperationStatus.InvalidData)
+                    {
+                        continue; // source buffer contains invalid bytes, user decides what to do for fallback
+                    }
+
+                    // at this point, result = TransformationStatus.NeedMoreSourceData
+                    // left over bytes in source span
+                    remainder = sourceSpan;
+                }
+            }
+            return;
         }
 
-        public static int SequentialIndexOf(this Span<byte> span, byte value)
+        public static bool SequenceEqual<T>(this Memory<T> first, Memory<T> second) where T : struct, IEquatable<T>
         {
-            return SequentialIndexOf(ref span.DangerousGetPinnableReference(), value, span.Length);
+            return first.Span.SequenceEqual(second.Span);
         }
 
-        public static int SequentialIndexOf(this ReadOnlySpan<byte> span, byte value)
+        public static bool SequenceEqual<T>(this ReadOnlyMemory<T> first, ReadOnlyMemory<T> second) where T : struct, IEquatable<T>
         {
-            return SequentialIndexOf(ref span.DangerousGetPinnableReference(), value, span.Length);
+            return first.Span.SequenceEqual(second.Span);
         }
 
-        private static unsafe int SequentialIndexOf(ref byte searchSpace, byte value, int length)
+        public static int SequenceCompareTo(this Span<byte> left, ReadOnlySpan<byte> right)
         {
-            Debug.Assert(length >= 0);
+            return SequenceCompareTo((ReadOnlySpan<byte>)left, right);
+        }
 
-            IntPtr index = (IntPtr)0; // Use IntPtr for arithmetic to avoid unnecessary 64->32->64 truncations
-            while (length >= 8)
+        public static int SequenceCompareTo(this ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
+        {
+            var minLength = left.Length;
+            if (minLength > right.Length) minLength = right.Length;
+            for (int i = 0; i < minLength; i++)
             {
-                length -= 8;
-
-                if (value == Unsafe.Add(ref searchSpace, index))
-                    goto Found;
-                if (value == Unsafe.Add(ref searchSpace, index + 1))
-                    goto Found1;
-                if (value == Unsafe.Add(ref searchSpace, index + 2))
-                    goto Found2;
-                if (value == Unsafe.Add(ref searchSpace, index + 3))
-                    goto Found3;
-                if (value == Unsafe.Add(ref searchSpace, index + 4))
-                    goto Found4;
-                if (value == Unsafe.Add(ref searchSpace, index + 5))
-                    goto Found5;
-                if (value == Unsafe.Add(ref searchSpace, index + 6))
-                    goto Found6;
-                if (value == Unsafe.Add(ref searchSpace, index + 7))
-                    goto Found7;
-
-                index += 8;
+                var result = left[i].CompareTo(right[i]);
+                if (result != 0) return result;
             }
-
-            if (length >= 4)
-            {
-                length -= 4;
-
-                if (value == Unsafe.Add(ref searchSpace, index))
-                    goto Found;
-                if (value == Unsafe.Add(ref searchSpace, index + 1))
-                    goto Found1;
-                if (value == Unsafe.Add(ref searchSpace, index + 2))
-                    goto Found2;
-                if (value == Unsafe.Add(ref searchSpace, index + 3))
-                    goto Found3;
-
-                index += 4;
-            }
-
-            while (length > 0)
-            {
-                if (value == Unsafe.Add(ref searchSpace, index))
-                    goto Found;
-
-                index += 1;
-                length--;
-            }
-            return -1;
-
-            Found: // Workaround for https://github.com/dotnet/coreclr/issues/9692
-            return (int)(byte*)index;
-            Found1:
-            return (int)(byte*)(index + 1);
-            Found2:
-            return (int)(byte*)(index + 2);
-            Found3:
-            return (int)(byte*)(index + 3);
-            Found4:
-            return (int)(byte*)(index + 4);
-            Found5:
-            return (int)(byte*)(index + 5);
-            Found6:
-            return (int)(byte*)(index + 6);
-            Found7:
-            return (int)(byte*)(index + 7);
+            return left.Length.CompareTo(right.Length);
         }
 
         public static bool TryIndicesOf(this Span<byte> buffer, byte value, Span<int> indices, out int numberOfIndices)
@@ -355,7 +266,7 @@ namespace System.Buffers
                 return false;
             }
 
-            return TryIndicesOf(ref buffer.DangerousGetPinnableReference(), value, length, indices, out numberOfIndices);
+            return TryIndicesOf(ref MemoryMarshal.GetReference(buffer), value, length, indices, out numberOfIndices);
         }
 
         public static bool TryIndicesOf(this ReadOnlySpan<byte> buffer, byte value, Span<int> indices, out int numberOfIndices)
@@ -367,7 +278,7 @@ namespace System.Buffers
                 return false;
             }
 
-            return TryIndicesOf(ref buffer.DangerousGetPinnableReference(), value, length, indices, out numberOfIndices);
+            return TryIndicesOf(ref MemoryMarshal.GetReference(buffer), value, length, indices, out numberOfIndices);
         }
 
         private unsafe static bool TryIndicesOf(ref byte searchSpace, byte value, int length, Span<int> indices, out int numberOfIndices)
@@ -458,7 +369,6 @@ namespace System.Buffers
 
             return result && numberOfIndices < indices.Length;
         }
-
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int LocateFirstFoundByte(Vector<byte> match)

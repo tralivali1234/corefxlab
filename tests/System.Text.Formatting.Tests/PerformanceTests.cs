@@ -2,10 +2,10 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System.Buffers;
+using System.Buffers.Text;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
-using System.Text;
 using Xunit;
 
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
@@ -69,13 +69,15 @@ namespace System.Text.Formatting.Tests
         [Fact]
         private void InvariantFormatIntHex()
         {
+            StandardFormat format = new StandardFormat('X', StandardFormat.NoPrecision);
+
             timer.Restart();
             for (int itteration = 0; itteration < itterationsInvariant; itteration++)
             {
                 StringFormatter sb = new StringFormatter(numbersToWrite, pool);
                 for (int i = 0; i < numbersToWrite; i++)
                 {
-                    sb.Append(((int)(i % 10)), TextFormat.HexUppercase);
+                    sb.Append(((int)(i % 10)), format);
                 }
                 var text = sb.ToString();
                 if (text.Length != numbersToWrite)
@@ -120,7 +122,7 @@ namespace System.Text.Formatting.Tests
                 var text = sb.ToString();
                 if (text.Length != numbersToWrite * 2)
                 {
-                    throw new Exception("test failed");
+                    throw new Exception($"test failed [{text.Length} != {numbersToWrite * 2}]");
                 }
             }
             PrintTime();
@@ -172,7 +174,7 @@ namespace System.Text.Formatting.Tests
         private void CustomCultureFormat()
         {
             StringFormatter sb = new StringFormatter(numbersToWrite * 3, pool);
-            sb.Encoder = CreateCustomCulture();
+            sb.SymbolTable = CreateCustomCulture();
 
             timer.Restart();
             for (int itteration = 0; itteration < itterationsCulture; itteration++)
@@ -221,7 +223,7 @@ namespace System.Text.Formatting.Tests
             string text = "Hello World!";
             int stringsToWrite = 2000;
             int size = stringsToWrite * text.Length + stringsToWrite;
-            ArrayFormatter formatter = new ArrayFormatter(size, TextEncoder.Utf8, pool);
+            ArrayFormatter formatter = new ArrayFormatter(size, SymbolTable.InvariantUtf8, pool);
 
             timer.Restart();
             for (int itteration = 0; itteration < itterationsInvariant; itteration++)
@@ -260,7 +262,7 @@ namespace System.Text.Formatting.Tests
             PrintTime();
         }
 
-        static TextEncoder CreateCustomCulture()
+        static SymbolTable CreateCustomCulture()
         {
             var utf16digitsAndSymbols = new byte[17][];
             for (ushort digit = 0; digit < 10; digit++)
@@ -269,10 +271,10 @@ namespace System.Text.Formatting.Tests
                 var digitString = new string(digitChar, 1);
                 utf16digitsAndSymbols[digit] = GetBytesUtf16(digitString);
             }
-            utf16digitsAndSymbols[(ushort)TextEncoder.Symbol.DecimalSeparator] = GetBytesUtf16(".");
-            utf16digitsAndSymbols[(ushort)TextEncoder.Symbol.GroupSeparator] = GetBytesUtf16(",");
-            utf16digitsAndSymbols[(ushort)TextEncoder.Symbol.MinusSign] = GetBytesUtf16("_?");
-            return TextEncoder.CreateUtf16Encoder(utf16digitsAndSymbols);
+            utf16digitsAndSymbols[(ushort)SymbolTable.Symbol.DecimalSeparator] = GetBytesUtf16(".");
+            utf16digitsAndSymbols[(ushort)SymbolTable.Symbol.GroupSeparator] = GetBytesUtf16(",");
+            utf16digitsAndSymbols[(ushort)SymbolTable.Symbol.MinusSign] = GetBytesUtf16("_?");
+            return new CustomUtf16SymbolTable(utf16digitsAndSymbols);
         }
         static byte[] GetBytesUtf16(string text)
         {
@@ -280,4 +282,3 @@ namespace System.Text.Formatting.Tests
         }
     }
 }
-

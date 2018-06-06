@@ -2,9 +2,9 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System.Buffers;
+using System.Buffers.Text;
 using System.Globalization;
 using System.IO;
-using System.Text;
 using System.Text.Utf8;
 using Xunit;
 
@@ -30,7 +30,7 @@ namespace System.Text.Formatting.Tests
         private void CheckByte(byte value, string format, string expected)
         {
             var formatter = new StringFormatter();
-            var parsed = TextFormat.Parse(format);
+            var parsed = StandardFormat.Parse(format);
             formatter.Clear();
             formatter.Append(value, parsed);
             var result = formatter.ToString();
@@ -49,6 +49,19 @@ namespace System.Text.Formatting.Tests
             sb.Append("hello");
             sb.Append((sbyte)-20);
             Assert.Equal("hi1hello-20", sb.ToString());
+        }
+
+        [Fact]
+        public void BasicArrayFormatter()
+        {
+            using (var sb = new ArrayFormatter(256, SymbolTable.InvariantUtf16))
+            {
+                sb.Append("hi");
+                sb.Append(1);
+                sb.Append("hello");
+                sb.Append((sbyte)-20);
+                Assert.Equal("hi1hello-20", Encoding.Unicode.GetString(sb.Formatted.Array, 0, sb.CommitedByteCount));
+            }
         }
 
         [Fact]
@@ -102,7 +115,7 @@ namespace System.Text.Formatting.Tests
 
         private void CheckInt64(long value, string format, string expected, StringFormatter formatter)
         {
-            var parsed = TextFormat.Parse(format);
+            var parsed = StandardFormat.Parse(format);
             formatter.Clear();
             formatter.Append(value, parsed);
             var result = formatter.ToString();
@@ -141,9 +154,9 @@ namespace System.Text.Formatting.Tests
             CheckInt64(long.MaxValue, "x", "7fffffffffffffff", formatter);
 
             CheckInt64(long.MinValue, "X", "8000000000000000", formatter);
-            CheckInt64(-10,  "X", "FFFFFFFFFFFFFFF6", formatter);
-            CheckInt64(-1,  "X", "FFFFFFFFFFFFFFFF", formatter);
-            CheckInt64(0,  "X", "0", formatter);
+            CheckInt64(-10, "X", "FFFFFFFFFFFFFFF6", formatter);
+            CheckInt64(-1, "X", "FFFFFFFFFFFFFFFF", formatter);
+            CheckInt64(0, "X", "0", formatter);
             CheckInt64(1, "X", "1", formatter);
             CheckInt64(10, "X", "A", formatter);
             CheckInt64(long.MaxValue, "X", "7FFFFFFFFFFFFFFF", formatter);
@@ -214,7 +227,7 @@ namespace System.Text.Formatting.Tests
         [Fact]
         public void FormatD()
         {
-            var format = TextFormat.Parse("D");
+            var format = StandardFormat.Parse("D");
             var sb = new StringFormatter();
             sb.Append((sbyte)-10, format);
             sb.Append((byte)99, format);
@@ -231,7 +244,7 @@ namespace System.Text.Formatting.Tests
         [Fact]
         public void FormatDPrecision()
         {
-            var format = TextFormat.Parse("D3");
+            var format = StandardFormat.Parse("D3");
             var sb = new StringFormatter();
             sb.Append((sbyte)-10, format);
             sb.Append((byte)99, format);
@@ -248,7 +261,7 @@ namespace System.Text.Formatting.Tests
         [Fact]
         public void FormatG()
         {
-            var format = TextFormat.Parse("G");
+            var format = StandardFormat.Parse("G");
             var sb = new StringFormatter();
             sb.Append((sbyte)-10, format);
             sb.Append((byte)99, format);
@@ -265,7 +278,7 @@ namespace System.Text.Formatting.Tests
         [Fact]
         public void FormatNPrecision()
         {
-            var format = TextFormat.Parse("N1");
+            var format = StandardFormat.Parse("N1");
             var sb = new StringFormatter();
             sb.Append((sbyte)-10, format);
             sb.Append((byte)99, format);
@@ -282,8 +295,8 @@ namespace System.Text.Formatting.Tests
         [Fact]
         public void FormatX()
         {
-            var x = TextFormat.Parse("x");
-            var X = TextFormat.Parse("X");
+            var x = StandardFormat.Parse("x");
+            var X = StandardFormat.Parse("X");
 
             var sb = new StringFormatter();
             sb.Append((ulong)255, x);
@@ -302,29 +315,29 @@ namespace System.Text.Formatting.Tests
         [Fact]
         public void FormatXUtf8()
         {
-            var x = TextFormat.Parse("x");
-            var X = TextFormat.Parse("X");
+            var x = StandardFormat.Parse("x");
+            var X = StandardFormat.Parse("X");
 
-            var sb = new ArrayFormatter(256, TextEncoder.Utf8);
+            var sb = new ArrayFormatter(256, SymbolTable.InvariantUtf8);
             sb.Append((ulong)255, x);
             sb.Append((uint)255, X);
 
-            Assert.Equal("ffFF", new Utf8String(sb.Formatted.AsSpan()).ToString());
+            Assert.Equal("ffFF", new Utf8Span(sb.Formatted.AsSpan()).ToString());
 
             sb.Clear();
             sb.Append((int)-1, X);
-            Assert.Equal("FFFFFFFF", new Utf8String(sb.Formatted.AsSpan()).ToString());
+            Assert.Equal("FFFFFFFF", new Utf8Span(sb.Formatted.AsSpan()).ToString());
 
             sb.Clear();
             sb.Append((int)-2, X);
-            Assert.Equal("FFFFFFFE", new Utf8String(sb.Formatted.AsSpan()).ToString());
+            Assert.Equal("FFFFFFFE", new Utf8Span(sb.Formatted.AsSpan()).ToString());
         }
 
         [Fact]
         public void FormatXPrecision()
         {
-            var x = TextFormat.Parse("x10");
-            var X = TextFormat.Parse("X10");
+            var x = StandardFormat.Parse("x10");
+            var X = StandardFormat.Parse("X10");
 
             var sb = new StringFormatter();
             sb.Append((ulong)255, x);
@@ -346,12 +359,13 @@ namespace System.Text.Formatting.Tests
             var buffer = new byte[1024];
             MemoryStream stream = new MemoryStream(buffer);
 
-            using(var writer = new StreamFormatter(stream, TextEncoder.Utf8, pool)) {
+            using (var writer = new StreamFormatter(stream, SymbolTable.InvariantUtf8, pool))
+            {
                 writer.Append(100);
                 writer.Append(-100);
                 writer.Append('h');
                 writer.Append("i!");
-                AssertUtf8Equal(buffer.AsSpan().Slice(0, (int)stream.Position), "100-100hi!");
+                AssertUtf8Equal(buffer.AsSpan(0, (int)stream.Position), "100-100hi!");
             }
         }
 
@@ -361,24 +375,26 @@ namespace System.Text.Formatting.Tests
             var buffer = new byte[1024];
             MemoryStream stream = new MemoryStream(buffer);
 
-            using(var utf8Writer = new StreamFormatter(stream, TextEncoder.Utf8, pool)) {
+            using (var utf8Writer = new StreamFormatter(stream, SymbolTable.InvariantUtf8, pool))
+            {
                 utf8Writer.Append("Hello");
                 utf8Writer.Append(" ");
                 utf8Writer.Append("World!");
                 utf8Writer.Append("\u0391"); // greek alpha
                 utf8Writer.Append("\uD950\uDF21");
-                utf8Writer.Append(new Utf8String("Hello"));
-                AssertUtf8Equal(buffer.AsSpan().Slice(0, (int)stream.Position), "Hello World!\u0391\uD950\uDF21Hello");
+                utf8Writer.Append(new Utf8Span("Hello"));
+                AssertUtf8Equal(buffer.AsSpan(0, (int)stream.Position), "Hello World!\u0391\uD950\uDF21Hello");
             }
 
             stream.Position = 0;
-            using(var utf16Writer = new StreamFormatter(stream, TextEncoder.Utf16, pool)) {
+            using (var utf16Writer = new StreamFormatter(stream, SymbolTable.InvariantUtf16, pool))
+            {
                 utf16Writer.Append("Hello");
                 utf16Writer.Append(" ");
                 utf16Writer.Append("World!");
                 utf16Writer.Append("\u0391");
-                utf16Writer.Append("\uD950\uDF21"); 
-                AssertUtf16Equal(buffer.AsSpan().Slice(0, (int)stream.Position), "Hello World!\u0391\uD950\uDF21");
+                utf16Writer.Append("\uD950\uDF21");
+                AssertUtf16Equal(buffer.AsSpan(0, (int)stream.Position), "Hello World!\u0391\uD950\uDF21");
             }
         }
 
@@ -387,11 +403,12 @@ namespace System.Text.Formatting.Tests
         {
             int length = 260;
             {
-                var formatter = new ArrayFormatter(length, TextEncoder.Utf8);
+                var formatter = new ArrayFormatter(length, SymbolTable.InvariantUtf8);
                 string data = new string('#', length);
                 formatter.Append(data);
                 Assert.Equal(length, formatter.CommitedByteCount);
-                for(int i=0; i<formatter.CommitedByteCount; i++) {
+                for (int i = 0; i < formatter.CommitedByteCount; i++)
+                {
                     Assert.Equal((byte)'#', formatter.Formatted.Array[i]);
                 }
             }

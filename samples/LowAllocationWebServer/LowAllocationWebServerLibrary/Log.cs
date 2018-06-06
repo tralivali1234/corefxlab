@@ -1,11 +1,9 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System.Collections.Sequences;
-using System.IO;
-using System.Text;
-using System.Text.Http;
-using System.Text.Http.SingleSegment;
+using Microsoft.Net;
+using System.Buffers;
+using static System.Buffers.Text.Encodings;
 
 namespace System.Diagnostics
 {
@@ -47,7 +45,7 @@ namespace System.Diagnostics
             Off = -1,
             Error = 0,
             Warning = 10,
-            Verbose = 20, 
+            Verbose = 20,
         }
     }
 
@@ -61,7 +59,7 @@ namespace System.Diagnostics
         }
         public override void LogMessage(Level level, string message)
         {
-            lock(s_lock)
+            lock (s_lock)
             {
                 ConsoleColor oldColor = Console.ForegroundColor;
                 switch (level)
@@ -84,24 +82,25 @@ namespace System.Diagnostics
 
     public static class HttpLogExtensions
     {
-        public static void LogRequest(this Log log, HttpRequest request)
+        public static void LogRequest(this Log log, HttpRequest request, ReadOnlySequence<byte> body)
         {
             if (log.IsVerbose)
             {
                 // TODO: this is much ceremony. We need to do something with this. ReadOnlyBytes.AsUtf8 maybe?
-                log.LogMessage(Log.Level.Verbose, "\tMethod:       {0}", request.Verb.ToUtf8String(TextEncoder.Utf8));
-                log.LogMessage(Log.Level.Verbose, "\tRequest-URI:  {0}", request.Path.ToUtf8String(TextEncoder.Utf8));
-                log.LogMessage(Log.Level.Verbose, "\tHTTP-Version: {0}", request.Version.ToUtf8String(TextEncoder.Utf8));
+                log.LogMessage(Log.Level.Verbose, "\tMethod:       {0}", request.Method);
+                log.LogMessage(Log.Level.Verbose, "\tRequest-URI:  {0}", request.Path);
+                log.LogMessage(Log.Level.Verbose, "\tHTTP-Version: {0}", request.Version);
 
                 log.LogMessage(Log.Level.Verbose, "\tHttp Headers:");
-                var position = Position.First;
-                while(request.Headers.TryGet(ref position, out var header, true))
+                var headers = request.Headers;
+                for (int i = 0; i < headers.Length; i++)
                 {
-                    log.LogMessage(Log.Level.Verbose, "\t\t{0}: {1}", header.Name.ToUtf8String(TextEncoder.Utf8), header.Value.ToUtf8String(TextEncoder.Utf8));
+                    var header = headers[i];
+                    log.LogMessage(Log.Level.Verbose, "\t\t{0}: {1}", Utf8.ToString(header.Name), Utf8.ToString(header.Value));
                 }
 
-                var body = request.Body.ToString(TextEncoder.Utf8);               
-                log.LogMessage(Log.Level.Verbose, body);
+                // TODO: Logger should support Utf8Span
+                log.LogMessage(Log.Level.Verbose, Utf8.ToString(body.First.Span));
             }
         }
     }

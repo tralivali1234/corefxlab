@@ -2,16 +2,56 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System.Buffers.Text;
+
 namespace System.Text.Encodings.Web.Utf8
 {
     public class UrlEncoder
     {
+        static bool[] IsAllowed = new bool[0x7F + 1];
+
+        [Obsolete("Use UrlEncoder.Utf8.Encode")]
+        public static bool TryEncode(ReadOnlySpan<byte> input, Span<byte> output, out int written)
+        {
+            written = 0;
+            for (int inputIndex = 0; inputIndex < input.Length; inputIndex++)
+            {
+                var next = input[inputIndex];
+                if(next > 0x7F)
+                {
+                    throw new NotImplementedException();
+                }
+
+                if(written >= output.Length)
+                {
+                    written = 0;
+                    return false;
+                }
+                if (IsAllowed[next])
+                {
+                    output[written++] = input[inputIndex];
+                }
+                else
+                {
+                    output[written++] = (byte)'%';
+                    if(!Utf8Formatter.TryFormat(next, output.Slice(written), out int formatted, 'X'))
+                    {
+                        written = 0;
+                        return false;
+                    }
+                    written += formatted;
+                }
+            }
+            return true;
+        }
+
         /// <summary>
         /// Unescape a URL path
         /// </summary>
         /// <param name="source">The byte span represents a UTF8 encoding url path.</param>
         /// <param name="destination">The byte span where unescaped url path is copied to.</param>
         /// <returns>The length of the byte sequence of the unescaped url path.</returns>
+        [Obsolete("Use UrlDecoder.Utf8.Decode")]
         public static int Decode(ReadOnlySpan<byte> source, Span<byte> destination)
         {
             if (destination.Length < source.Length)
@@ -35,6 +75,7 @@ namespace System.Text.Encodings.Web.Utf8
         /// The unescape is done in place, which means after decoding the result is the subset of 
         /// the input span.
         /// </remarks>
+        [Obsolete("Use UrlDecoder.Utf8.DecodeInPlace")]
         public static int DecodeInPlace(Span<byte> buffer)
         {
             // the slot to read the input
@@ -256,79 +297,106 @@ namespace System.Text.Encodings.Web.Utf8
                 return -1;
             }
 
-            var probe = scan;
-
-            var value1 = ReadHex(ref probe, buffer);
-            if (value1 == -1)
+            buffer = buffer.Slice(scan);
+            if (buffer.Length < 2)
             {
                 return -1;
             }
 
-            var value2 = ReadHex(ref probe, buffer);
-            if (value2 == -1)
+            if (!Utf8Parser.TryParse(buffer.Slice(0, 2), out byte value, out var bytesConsumed, 'X'))
+            {
+                return -1;
+            }
+            
+            if (bytesConsumed != 2)
             {
                 return -1;
             }
 
-            if (SkipUnescape(value1, value2))
-            {
-                return -1;
-            }
-
-            scan = probe;
-            return (value1 << 4) + value2;
-        }
-
-
-        /// <summary>
-        /// Read the next char and convert it into hexadecimal value.
-        /// 
-        /// The <paramref name="scan"/> index will be moved to the next
-        /// byte no matter no matter whether the operation successes.
-        /// </summary>
-        /// <param name="scan">The index of the byte in the buffer to read</param>
-        /// <param name="buffer">The byte span from which the hex to be read</param>
-        /// <returns>The hexadecimal value if successes, otherwise -1.</returns>
-        private static int ReadHex(ref int scan, Span<byte> buffer)
-        {
-            if (scan == buffer.Length)
-            {
-                return -1;
-            }
-
-            var value = buffer[scan++];
-            var isHead = ((value >= '0') && (value <= '9')) ||
-                         ((value >= 'A') && (value <= 'F')) ||
-                         ((value >= 'a') && (value <= 'f'));
-
-            if (!isHead)
-            {
-                return -1;
-            }
-
-            if (value <= '9')
-            {
-                return value - '0';
-            }
-            else if (value <= 'F')
-            {
-                return (value - 'A') + 10;
-            }
-            else // a - f
-            {
-                return (value - 'a') + 10;
-            }
-        }
-
-        private static bool SkipUnescape(int value1, int value2)
-        {
             // skip %2F - '/'
-            if (value1 == 2 && value2 == 15)
+            if (value == 0x2F)
             {
-                return true;
+                return -1;
             }
 
-            return false;
+            scan += 2;
+            return value;
         }
+
+        static UrlEncoder()
+        {
+            // Unreserved
+            IsAllowed['A'] = true;
+            IsAllowed['B'] = true;
+            IsAllowed['C'] = true;
+            IsAllowed['D'] = true;
+            IsAllowed['E'] = true;
+            IsAllowed['F'] = true;
+            IsAllowed['G'] = true;
+            IsAllowed['H'] = true;
+            IsAllowed['I'] = true;
+            IsAllowed['J'] = true;
+            IsAllowed['K'] = true;
+            IsAllowed['L'] = true;
+            IsAllowed['M'] = true;
+            IsAllowed['N'] = true;
+            IsAllowed['O'] = true;
+            IsAllowed['P'] = true;
+            IsAllowed['Q'] = true;
+            IsAllowed['R'] = true;
+            IsAllowed['S'] = true;
+            IsAllowed['T'] = true;
+            IsAllowed['U'] = true;
+            IsAllowed['V'] = true;
+            IsAllowed['W'] = true;
+            IsAllowed['X'] = true;
+            IsAllowed['Y'] = true;
+            IsAllowed['Z'] = true;
+
+            IsAllowed['a'] = true;
+            IsAllowed['b'] = true;
+            IsAllowed['c'] = true;
+            IsAllowed['d'] = true;
+            IsAllowed['e'] = true;
+            IsAllowed['f'] = true;
+            IsAllowed['g'] = true;
+            IsAllowed['h'] = true;
+            IsAllowed['i'] = true;
+            IsAllowed['j'] = true;
+            IsAllowed['k'] = true;
+            IsAllowed['l'] = true;
+            IsAllowed['m'] = true;
+            IsAllowed['n'] = true;
+            IsAllowed['o'] = true;
+            IsAllowed['p'] = true;
+            IsAllowed['q'] = true;
+            IsAllowed['r'] = true;
+            IsAllowed['s'] = true;
+            IsAllowed['t'] = true;
+            IsAllowed['u'] = true;
+            IsAllowed['v'] = true;
+            IsAllowed['w'] = true;
+            IsAllowed['x'] = true;
+            IsAllowed['y'] = true;
+            IsAllowed['z'] = true;
+
+            IsAllowed['0'] = true;
+            IsAllowed['1'] = true;
+            IsAllowed['2'] = true;
+            IsAllowed['3'] = true;
+            IsAllowed['4'] = true;
+            IsAllowed['5'] = true;
+            IsAllowed['6'] = true;
+            IsAllowed['7'] = true;
+            IsAllowed['8'] = true;
+            IsAllowed['9'] = true;
+
+            IsAllowed['-'] = true;
+            IsAllowed['_'] = true;
+            IsAllowed['.'] = true;
+            IsAllowed['~'] = true;
+        }
+
+        public static Utf8UriEncoder Utf8 { get; } = new Utf8UriEncoder();
     }
 }

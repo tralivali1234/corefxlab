@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using System.Buffers.Text;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Text.Utf8;
-using System.Text;
+using System.Runtime.InteropServices;
 
 namespace System.Text.Formatting
 {
@@ -15,7 +16,7 @@ namespace System.Text.Formatting
     // For now, the data might contain errors.
     public class EncodingProvider
     {
-        public static TextEncoder CreateEncoding(string localeId)
+        public static SymbolTable CreateEncoding(string localeId)
         {
             var resourceName = "System.Text.Formatting.Globalization.locales.bin";
             var resourceStream = typeof(EncodingProvider).GetTypeInfo().Assembly.GetManifestResourceStream(resourceName);
@@ -26,11 +27,11 @@ namespace System.Text.Formatting
 
             using (resourceStream)
             {
-                return CreateEncoder(localeId, resourceStream);
+                return CreateSymbolTable(localeId, resourceStream);
             }
         }
 
-        private static TextEncoder CreateEncoder(string localeId, Stream resourceStream)
+        private static SymbolTable CreateSymbolTable(string localeId, Stream resourceStream)
         {
             const int maxIdLength = 15;
             const int recordSize = 20;
@@ -44,20 +45,19 @@ namespace System.Text.Formatting
             resourceStream.Read(index, 0, indexSize);
 
             byte[] idBytes = new byte[maxIdLength];
-            int idByteCount;
-            if (!TextEncoder.Utf8.TryEncode(localeId, new Span<byte>(idBytes), out idByteCount))
-            {
+            var status = Encodings.Utf16.ToUtf8(MemoryMarshal.AsBytes(localeId.AsSpan()), idBytes, out int consumed, out int idByteCount);
+            if (status != System.Buffers.OperationStatus.Done)
                 throw new Exception("bad locale id");
-            }
-            var id = new Utf8String(idBytes.AsSpan().Slice(0, idByteCount));
+
+            var id = new Utf8Span(idBytes.AsSpan(0, idByteCount));
 
             int recordStart = -1;
             for (int record = 0; record < numberOfIDs; record++)
             {
-                var indexId = index.AsSpan().Slice(record * recordSize, idByteCount);
-                if (id.Equals(new Utf8String(indexId))) // found record
+                var indexId = index.AsSpan(record * recordSize, idByteCount);
+                if (id.Equals(new Utf8Span(indexId))) // found record
                 {
-                    var indexData = index.AsSpan().Slice(record * recordSize + maxIdLength);
+                    var indexData = index.AsSpan(record * recordSize + maxIdLength);
                     recordStart = 0;
                     recordStart += indexData[3] * 256 * 256 * 256;
                     recordStart += indexData[2] * 256 * 256;
@@ -92,7 +92,7 @@ namespace System.Text.Formatting
                 Array.Copy(data, stringStart, utf16digitsAndSymbols[stringIndex], 0, stringLength);
             }
 
-            return TextEncoder.CreateUtf16Encoder(utf16digitsAndSymbols);
+            return new CultureUtf16SymbolTable(utf16digitsAndSymbols);
         }
 
         static ushort ReadUInt16At(byte[] data, int ushortIndex)
@@ -100,7 +100,23 @@ namespace System.Text.Formatting
             ushortIndex *= 2;
             ushort value = (ushort)(data[ushortIndex + 1] * 256 + data[ushortIndex + 0]);
             return value;
+        }
 
+        class CultureUtf16SymbolTable : SymbolTable
+        {
+            public CultureUtf16SymbolTable(byte[][] symbols) : base(symbols) {}
+
+            public override bool TryEncode(byte utf8, Span<byte> destination, out int bytesWritten)
+                => SymbolTable.InvariantUtf16.TryEncode(utf8, destination, out bytesWritten);
+
+            public override bool TryEncode(ReadOnlySpan<byte> utf8, Span<byte> destination, out int bytesConsumed, out int bytesWritten)
+                => SymbolTable.InvariantUtf16.TryEncode(utf8, destination, out bytesConsumed, out bytesWritten);
+
+            public override bool TryParse(ReadOnlySpan<byte> source, out byte utf8, out int bytesConsumed)
+                => SymbolTable.InvariantUtf16.TryParse(source, out utf8, out bytesConsumed);
+
+            public override bool TryParse(ReadOnlySpan<byte> source, Span<byte> utf8, out int bytesConsumed, out int bytesWritten)
+                => SymbolTable.InvariantUtf16.TryParse(source, utf8, out bytesConsumed, out bytesWritten);
         }
     }
 }

@@ -3,103 +3,131 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Buffers;
+using System.Buffers.Text;
 using System.Collections.Sequences;
 
 namespace System.Text.Formatting
 {
     public static class SequenceFormatterExtensions
     {
-        public static SequenceFormatter<TSequence> CreateFormatter<TSequence>(this TSequence sequence, TextEncoder encoder = default(TextEncoder)) where TSequence : ISequence<Buffer<byte>>
+        public static SequenceFormatter<TSequence> CreateFormatter<TSequence>(this TSequence sequence, SymbolTable symbolTable = null) where TSequence : ISequence<Memory<byte>>
         {
-            return new SequenceFormatter<TSequence>(sequence, encoder);
+            return new SequenceFormatter<TSequence>(sequence, symbolTable);
         }
     }
 
-    public class SequenceFormatter<TSequence> : ITextOutput where TSequence : ISequence<Buffer<byte>>
+    public class SequenceFormatter<TSequence> : ITextBufferWriter where TSequence : ISequence<Memory<byte>>
     {
-        ISequence<Buffer<byte>> _buffers;
-        TextEncoder _encoder;
+        ISequence<Memory<byte>> _buffers;
+        SymbolTable _symbolTable;
 
-        Position _currentPosition = Position.First;
+        SequencePosition _currentSequencePosition = default;
         int _currentWrittenBytes;
-        Position _previousPosition = Position.AfterLast;
+        SequencePosition _previousSequencePosition = default;
         int _previousWrittenBytes;
         int _totalWritten;
 
-        public SequenceFormatter(TSequence buffers, TextEncoder encoder)
+        public SequenceFormatter(TSequence buffers, SymbolTable symbolTable)
         {
-            _encoder = encoder;
+            _symbolTable = symbolTable;
             _buffers = buffers;
-            _previousWrittenBytes = -1;      
+            _currentSequencePosition = _buffers.Start;
+            _previousWrittenBytes = -1;
         }
 
-        Span<byte> IOutput.Buffer
+        private Memory<byte> Current
         {
-            get {
-                return Current.Span.Slice(_currentWrittenBytes);
-            }
-        }
-
-        private Buffer<byte> Current { 
-            get {
-                Buffer<byte> result;
-                if (!_buffers.TryGet(ref _currentPosition, out result, advance: false)) { throw new InvalidOperationException(); }
+            get
+            {
+                if (!_buffers.TryGet(ref _currentSequencePosition, out Memory<byte> result, advance: false)) { throw new InvalidOperationException(); }
                 return result;
             }
         }
-        private Buffer<byte> Previous
+        private Memory<byte> Previous
         {
-            get {
-                Buffer<byte> result;
-                if (!_buffers.TryGet(ref _previousPosition, out result, advance: false)) { throw new InvalidOperationException(); }
+            get
+            {
+                if (!_buffers.TryGet(ref _previousSequencePosition, out Memory<byte> result, advance: false)) { throw new InvalidOperationException(); }
                 return result;
             }
         }
-        private bool NeedShift => _previousWrittenBytes != -1; 
+        private bool NeedShift => _previousWrittenBytes != -1;
 
-        TextEncoder ITextOutput.Encoder => _encoder;
+        SymbolTable ITextBufferWriter.SymbolTable => _symbolTable;
 
         public int TotalWritten => _totalWritten;
 
-        void IOutput.Enlarge(int desiredBufferLength)
+        Memory<byte> IBufferWriter<byte>.GetMemory(int minimumLength)
         {
-            if (NeedShift) throw new NotImplementedException("need to allocate temp array");
+            if (minimumLength == 0) minimumLength = 1;
+            if (minimumLength > Current.Length - _currentWrittenBytes)
+            {
+                if (NeedShift) throw new NotImplementedException("need to allocate temp array");
 
-            _previousPosition = _currentPosition;
-            _previousWrittenBytes = _currentWrittenBytes;
+                _previousSequencePosition = _currentSequencePosition;
+                _previousWrittenBytes = _currentWrittenBytes;
 
-            Buffer<byte> span;
-            if (!_buffers.TryGet(ref _currentPosition, out span)) {
-                throw new InvalidOperationException();
+                if (!_buffers.TryGet(ref _currentSequencePosition, out Memory<byte> span))
+                {
+                    throw new InvalidOperationException();
+                }
+                _currentWrittenBytes = 0;
             }
-            _currentWrittenBytes = 0;            
+            return Current.Slice(_currentWrittenBytes);
         }
 
-        void IOutput.Advance(int bytes)
+        Span<byte> IBufferWriter<byte>.GetSpan(int minimumLength)
+        {
+            if (minimumLength == 0) minimumLength = 1;
+            if (minimumLength > Current.Length - _currentWrittenBytes)
+            {
+                if (NeedShift) throw new NotImplementedException("need to allocate temp array");
+
+                _previousSequencePosition = _currentSequencePosition;
+                _previousWrittenBytes = _currentWrittenBytes;
+
+                if (!_buffers.TryGet(ref _currentSequencePosition, out Memory<byte> span))
+                {
+                    throw new InvalidOperationException();
+                }
+                _currentWrittenBytes = 0;
+            }
+            // Duplicating logic from GetMemory so we can slice the span rather than slicing the memory
+            return Current.Span.Slice(_currentWrittenBytes);
+        }
+
+
+        void IBufferWriter<byte>.Advance(int bytes)
         {
             var current = Current;
-            if (NeedShift) {
+            if (NeedShift)
+            {
                 var previous = Previous;
                 var spaceInPrevious = previous.Length - _previousWrittenBytes;
-                if(spaceInPrevious < bytes) {
-                    current.Slice(0, spaceInPrevious).CopyTo(previous.Span.Slice(_previousWrittenBytes));
-                    current.Slice(spaceInPrevious, bytes - spaceInPrevious).CopyTo(current.Span);
+                if (spaceInPrevious < bytes)
+                {
+                    current.Span.Slice(0, spaceInPrevious).CopyTo(previous.Span.Slice(_previousWrittenBytes));
+                    current.Span.Slice(spaceInPrevious, bytes - spaceInPrevious).CopyTo(current.Span);
                     _previousWrittenBytes = -1;
                     _currentWrittenBytes = bytes - spaceInPrevious;
                 }
-                else {
-                    current.Slice(0, bytes).CopyTo(previous.Span.Slice(_previousWrittenBytes));
-                    _currentPosition = _previousPosition;
+                else
+                {
+                    current.Span.Slice(0, bytes).CopyTo(previous.Span.Slice(_previousWrittenBytes));
+                    _currentSequencePosition = _previousSequencePosition;
                     _currentWrittenBytes = _previousWrittenBytes + bytes;
                 }
 
             }
-            else {
+            else
+            {
                 if (current.Length - _currentWrittenBytes < bytes) throw new NotImplementedException();
                 _currentWrittenBytes += bytes;
             }
 
             _totalWritten += bytes;
         }
+
+        public int MaxBufferSize { get; } = Int32.MaxValue;
     }
 }

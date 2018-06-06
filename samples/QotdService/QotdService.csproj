@@ -1,13 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <Import Project="..\..\tools\common.props" />
   <PropertyGroup>
-    <TargetFramework>netcoreapp2.0</TargetFramework>
+    <TargetFramework>netcoreapp2.1</TargetFramework>
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\System.Net.Libuv\System.Net.Libuv.csproj" />
-    <ProjectReference Include="..\..\src\System.Text.Primitives\System.Text.Primitives.csproj" />
-    <ProjectReference Include="..\..\src\System.Buffers.Primitives\System.Buffers.Primitives.csproj" />
-    <ProjectReference Include="..\..\src\System.Collections.Sequences\System.Collections.Sequences.csproj" />
+    <ProjectReference Include="..\..\src\System.Text.Utf8String\System.Text.Utf8String.csproj" />
   </ItemGroup>
 </Project>

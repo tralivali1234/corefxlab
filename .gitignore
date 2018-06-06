@@ -246,7 +246,7 @@ tools/
 *.ncrunchsolution
 
 #dotnet cli
-[Dd]otnet/
+[Dd]otnetcli/
 
 # Nuget.exe
 nuget.exe
@@ -263,3 +263,6 @@ scripts/PerfHarness/results/
 BenchmarkDotNet.Artifacts/
 BDN.Generated/
 binaries/
+
+# Do not exclude any external files
+!external/**/*

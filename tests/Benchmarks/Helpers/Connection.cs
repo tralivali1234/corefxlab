@@ -4,20 +4,20 @@
 
 namespace System.IO.Pipelines
 {
-    public class PipeConnection : IPipeConnection
+    public class DuplexPipe : IDuplexPipe
     {
-        public PipeConnection(PipeFactory factory)
+        public DuplexPipe(PipeOptions pipeOptions)
         {
-            Input = factory.Create();
-            Output = factory.Create();
+            Input = new Pipe(pipeOptions);
+            Output = new Pipe(pipeOptions);
         }
 
-        IPipeReader IPipeConnection.Input => Input.Reader;
-        IPipeWriter IPipeConnection.Output => Output.Writer;
+        PipeReader IDuplexPipe.Input => Input.Reader;
+        PipeWriter IDuplexPipe.Output => Output.Writer;
 
-        public IPipe Input { get; }
+        public Pipe Input { get; }
 
-        public IPipe Output { get; }
+        public Pipe Output { get; }
 
         public void Dispose()
         {

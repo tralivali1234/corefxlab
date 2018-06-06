@@ -3,11 +3,11 @@
   <PropertyGroup>
     <Description>Non-allocating Base64 encoder and decoded</Description>
     <TargetFramework>netstandard1.1</TargetFramework>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <PackageTags>.NET non-allocating Base64 encoder and decoder</PackageTags>
     <PackageIconUrl>http://go.microsoft.com/fwlink/?linkid=833199</PackageIconUrl>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\System.Binary\System.Binary.csproj" />
     <ProjectReference Include="..\System.Text.Primitives\System.Text.Primitives.csproj" />
   </ItemGroup>
 </Project>

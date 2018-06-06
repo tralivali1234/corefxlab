@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System.Globalization;
+using System.Buffers.Text;
 using Xunit;
 
 namespace System.Text.Primitives.Tests
@@ -10,10 +10,10 @@ namespace System.Text.Primitives.Tests
     {
         const int NumberOfRandomSamples = 1000;
 
-        static readonly TextEncoder[] Encoders = new TextEncoder[]
+        static readonly SymbolTable[] SymbolTables = new SymbolTable[]
         {
-            TextEncoder.Utf8,
-            TextEncoder.Utf16,
+            SymbolTable.InvariantUtf8,
+            SymbolTable.InvariantUtf16,
         };
 
         [Theory]
@@ -23,17 +23,17 @@ namespace System.Text.Primitives.Tests
         [InlineData('P')]
         public void SpecificGuidTests(char format)
         {
-            foreach (var encoder in Encoders)
+            foreach (var symbolTable in SymbolTables)
             {
-                TestGuidFormat(Guid.Empty, format, encoder);
-                TestGuidFormat(Guid.Parse("{00000000-0000-0000-0000-000000000001}"), format, encoder);
-                TestGuidFormat(Guid.Parse("{10000000-0000-0000-0000-000000000000}"), format, encoder);
-                TestGuidFormat(Guid.Parse("{11111111-1111-1111-1111-111111111111}"), format, encoder);
-                TestGuidFormat(Guid.Parse("{99999999-9999-9999-9999-999999999999}"), format, encoder);
-                TestGuidFormat(Guid.Parse("{AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA}"), format, encoder);
-                TestGuidFormat(Guid.Parse("{FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF}"), format, encoder);
-                TestGuidFormat(Guid.Parse("{aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa}"), format, encoder);
-                TestGuidFormat(Guid.Parse("{ffffffff-ffff-ffff-ffff-ffffffffffff}"), format, encoder);
+                TestGuidFormat(Guid.Empty, format, symbolTable);
+                TestGuidFormat(Guid.Parse("{00000000-0000-0000-0000-000000000001}"), format, symbolTable);
+                TestGuidFormat(Guid.Parse("{10000000-0000-0000-0000-000000000000}"), format, symbolTable);
+                TestGuidFormat(Guid.Parse("{11111111-1111-1111-1111-111111111111}"), format, symbolTable);
+                TestGuidFormat(Guid.Parse("{99999999-9999-9999-9999-999999999999}"), format, symbolTable);
+                TestGuidFormat(Guid.Parse("{AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA}"), format, symbolTable);
+                TestGuidFormat(Guid.Parse("{FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF}"), format, symbolTable);
+                TestGuidFormat(Guid.Parse("{aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa}"), format, symbolTable);
+                TestGuidFormat(Guid.Parse("{ffffffff-ffff-ffff-ffff-ffffffffffff}"), format, symbolTable);
             }
         }
 
@@ -47,21 +47,21 @@ namespace System.Text.Primitives.Tests
             for (var i = 0; i < NumberOfRandomSamples; i++)
             {
                 Guid guid = Guid.NewGuid();
-                foreach (var encoder in Encoders)
+                foreach (var symbolTable in SymbolTables)
                 {
-                    TestGuidFormat(guid, format, encoder);
+                    TestGuidFormat(guid, format, symbolTable);
                 }
             }
         }
 
-        static void TestGuidFormat(Guid guid, char format, TextEncoder encoder)
+        static void TestGuidFormat(Guid guid, char format, SymbolTable symbolTable)
         {
             var expected = guid.ToString(format.ToString());
 
             var span = new Span<byte>(new byte[128]);
-            Assert.True(PrimitiveFormatter.TryFormat(guid, span, out int written, format, encoder));
+            Assert.True(CustomFormatter.TryFormat(guid, span, out int written, format, symbolTable));
 
-            var actual = TestHelper.SpanToString(span.Slice(0, written), encoder);
+            var actual = TestHelper.SpanToString(span.Slice(0, written), symbolTable);
             Assert.Equal(expected, actual);
         }
     }

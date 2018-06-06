@@ -2,29 +2,61 @@
     [string]$Configuration="Debug",
     [string]$Restore="true",
     [string]$Version="<default>",
-    [string]$BuildVersion=[System.DateTime]::Now.ToString('eyyMMdd-1')
+    [string]$BuildVersion=[System.DateTime]::Now.ToString('preview2-yyMMdd-1'),
+    [string]$SkipTests="false"
 )
 
 Write-Host "Configuration=$Configuration."
 Write-Host "Restore=$Restore."
 Write-Host "Version=$Version."
 Write-Host "BuildVersion=$BuildVersion."
+Write-Host "SkipTests=$SkipTests."
 
-if (!(Test-Path "dotnet\dotnet.exe")) {
+$dotnetExePath="$PSScriptRoot\..\dotnetcli\dotnet.exe"
+if ($Version -eq "<default>") {
+    $Version = (Get-Content "$PSScriptRoot\..\DotnetCLIVersion.txt" -Raw).Trim()
+}
+
+if (!(Test-Path "$PSScriptRoot\..\dotnetcli")) {
     Write-Host "dotnet.exe not installed, downloading and installing."
-    if ($Version -eq "<default>") {
-        $Version = (Get-Content "$PSScriptRoot\..\DotnetCLIVersion.txt" -Raw).Trim()
-    }
-    Invoke-Expression -Command "$PSScriptRoot\install-dotnet.ps1 -Version $Version -InstallDir $PSScriptRoot\..\dotnet"
+    Invoke-Expression -Command "$PSScriptRoot\install-dotnet.ps1 -Channel master -Version $Version -InstallDir $PSScriptRoot\..\dotnetcli"
     if ($lastexitcode -ne $null -and $lastexitcode -ne 0) {
-        Write-Error "Failed to install dotnet.exe, exit code [$lastexitcode], aborting build."
+        Write-Error "Failed to install latest dotnet.exe, exit code [$lastexitcode], aborting build."
         exit -1
+    }
+
+    Invoke-Expression -Command "$PSScriptRoot\install-dotnet.ps1 -Version 1.0.0 -InstallDir $PSScriptRoot\..\dotnetcli"
+    if ($lastexitcode -ne $null -and $lastexitcode -ne 0) {
+        Write-Error "Failed to install framework version 1.0.0, exit code [$lastexitcode], aborting build."
+        exit -1
+    }
+
+    Invoke-Expression -Command "$PSScriptRoot\install-dotnet.ps1 -Version 2.0.0 -InstallDir $PSScriptRoot\..\dotnetcli"
+    if ($lastexitcode -ne $null -and $lastexitcode -ne 0) {
+        Write-Error "Failed to install framework version 2.0.0, exit code [$lastexitcode], aborting build."
+        exit -1
+    }
+} else {
+    Write-Host "dotnet.exe is installed, checking for latest."
+
+    $cliVersion = Invoke-Expression "$dotnetExePath --version"
+    if ($cliVersion -ne $Version) {
+        Write-Host "Newest version of dotnet cli not installed, downloading and installing."
+        Invoke-Expression -Command "$PSScriptRoot\install-dotnet.ps1 -Channel master -Version $Version -InstallDir $PSScriptRoot\..\dotnetcli"
+        if ($lastexitcode -ne $null -and $lastexitcode -ne 0) {
+            Write-Error "Failed to install latest dotnet.exe, exit code [$lastexitcode], aborting build."
+            exit -1
+        }
+    }
+    else
+    {
+        Write-Host "Newest version of dotnet cli is already installed."
     }
 }
 
 $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = 1
+$env:DOTNET_MULTILEVEL_LOOKUP = 0
 
-$dotnetExePath="$PSScriptRoot\..\dotnet\dotnet.exe"
 
 $file = "corefxlab.sln"
 
@@ -37,26 +69,27 @@ if ($Restore -eq "true") {
     }
 }
 
-$errorsEncountered = 0
-
 Write-Host "Building solution $file..."
-Invoke-Expression "$dotnetExePath build $file -c $Configuration /p:VersionSuffix=$BuildVersion"
+Invoke-Expression "$dotnetExePath build $file -c $Configuration /p:VersionSuffix=$BuildVersion --no-restore"
 
 if ($lastexitcode -ne 0) {
     Write-Error "Failed to build solution $file"
-    $errorsEncountered++
+    exit -1
 }
 
+$errorsEncountered = 0
 $projectsFailed = New-Object System.Collections.Generic.List[String]
 
-foreach ($testFile in [System.IO.Directory]::EnumerateFiles("$PSScriptRoot\..\tests", "*.csproj", "AllDirectories")) {
-    Write-Host "Building and running tests for project $testFile..."
-    Invoke-Expression "$dotnetExePath test $testFile -c $Configuration --no-build -- -notrait category=performance -notrait category=outerloop"
-
-    if ($lastexitcode -ne 0) {
-        Write-Error "Some tests failed in project $testFile"
-        $projectsFailed.Add($testFile)
-        $errorsEncountered++
+if ($SkipTests -ne "true") {
+    foreach ($testFile in [System.IO.Directory]::EnumerateFiles("$PSScriptRoot\..\tests", "*Tests*.csproj", "AllDirectories")) {
+        Write-Host "Building and running tests for project $testFile..."
+        Invoke-Expression "$dotnetExePath test $testFile -c $Configuration --no-build -- -notrait category=performance -notrait category=outerloop"
+    
+        if ($lastexitcode -ne 0) {
+            Write-Error "Some tests failed in project $testFile"
+            $projectsFailed.Add($testFile)
+            $errorsEncountered++
+        }
     }
 }
 

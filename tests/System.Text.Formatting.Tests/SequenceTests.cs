@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System.Buffers;
 using System.Collections.Sequences;
 using System.Text.Utf8;
 using Xunit;
@@ -20,10 +19,7 @@ namespace System.Text.Parsing.Tests
         [InlineData(123, 3, new string[] { "1", "2", "3_" })]
         public void ParseUInt32(uint expectedValue, int expectedConsumed, string[] segments) {
             var buffers = ToUtf8Buffers(segments);
-
-            uint value;
-            int consumed;
-            Assert.True(buffers.TryParseUInt32(out value, out consumed));
+            Assert.True(buffers.TryParseUInt32(out uint value, out int consumed));
             Assert.Equal(expectedValue, value);
             Assert.Equal(expectedConsumed, consumed);
         }
@@ -39,19 +35,16 @@ namespace System.Text.Parsing.Tests
         public void ParseUInt64(ulong expectedValue, int expectedConsumed, string[] segments)
         {
             var buffers = ToUtf8Buffers(segments);
-
-            ulong value;
-            int consumed;
-            Assert.True(buffers.TryParseUInt64(out value, out consumed));
+            Assert.True(buffers.TryParseUInt64(out ulong value, out int consumed));
             Assert.Equal(expectedValue, value);
             Assert.Equal(expectedConsumed, consumed);
         }
 
-        static ArrayList<ReadOnlyBuffer<byte>> ToUtf8Buffers(params string[] segments)
+        static ArrayList<ReadOnlyMemory<byte>> ToUtf8Buffers(params string[] segments)
         {
-            var buffers = new ArrayList<ReadOnlyBuffer<byte>>();
+            var buffers = new ArrayList<ReadOnlyMemory<byte>>();
             foreach (var segment in segments) {
-                buffers.Add(new Utf8String(segment).Bytes.ToArray());
+                buffers.Add(new Utf8Span(segment).Bytes.ToArray());
             }
             return buffers;
         }

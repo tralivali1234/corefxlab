@@ -7,6 +7,8 @@ using System;
 using System.Globalization;
 using Xunit;
 using System.Text;
+using System.Buffers;
+using System.Buffers.Text;
 
 namespace System.Text.Formatting.Tests
 {
@@ -14,7 +16,7 @@ namespace System.Text.Formatting.Tests
     {
         public void CheckByte(Byte value, string format)
         {
-            var parsed = TextFormat.Parse(format);
+            var parsed = StandardFormat.Parse(format);
             var formatter = new StringFormatter();
             formatter.Append(value, parsed);
             var result = formatter.ToString();
@@ -414,7 +416,7 @@ namespace System.Text.Formatting.Tests
         
         public void CheckSByte(SByte value, string format)
         {
-            var parsed = TextFormat.Parse(format);
+            var parsed = StandardFormat.Parse(format);
             var formatter = new StringFormatter();
             formatter.Append(value, parsed);
             var result = formatter.ToString();
@@ -814,7 +816,7 @@ namespace System.Text.Formatting.Tests
         
         public void CheckUInt16(UInt16 value, string format)
         {
-            var parsed = TextFormat.Parse(format);
+            var parsed = StandardFormat.Parse(format);
             var formatter = new StringFormatter();
             formatter.Append(value, parsed);
             var result = formatter.ToString();
@@ -1214,7 +1216,7 @@ namespace System.Text.Formatting.Tests
         
         public void CheckInt16(Int16 value, string format)
         {
-            var parsed = TextFormat.Parse(format);
+            var parsed = StandardFormat.Parse(format);
             var formatter = new StringFormatter();
             formatter.Append(value, parsed);
             var result = formatter.ToString();
@@ -1614,7 +1616,7 @@ namespace System.Text.Formatting.Tests
         
         public void CheckUInt32(UInt32 value, string format)
         {
-            var parsed = TextFormat.Parse(format);
+            var parsed = StandardFormat.Parse(format);
             var formatter = new StringFormatter();
             formatter.Append(value, parsed);
             var result = formatter.ToString();
@@ -2014,7 +2016,7 @@ namespace System.Text.Formatting.Tests
         
         public void CheckInt32(Int32 value, string format)
         {
-            var parsed = TextFormat.Parse(format);
+            var parsed = StandardFormat.Parse(format);
             var formatter = new StringFormatter();
             formatter.Append(value, parsed);
             var result = formatter.ToString();
@@ -2414,7 +2416,7 @@ namespace System.Text.Formatting.Tests
         
         public void CheckUInt64(UInt64 value, string format)
         {
-            var parsed = TextFormat.Parse(format);
+            var parsed = StandardFormat.Parse(format);
             var formatter = new StringFormatter();
             formatter.Append(value, parsed);
             var result = formatter.ToString();
@@ -2814,7 +2816,7 @@ namespace System.Text.Formatting.Tests
         
         public void CheckInt64(Int64 value, string format)
         {
-            var parsed = TextFormat.Parse(format);
+            var parsed = StandardFormat.Parse(format);
             var formatter = new StringFormatter();
             formatter.Append(value, parsed);
             var result = formatter.ToString();

@@ -1,12 +1,10 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-using System.Buffers;
-using System.Runtime.InteropServices;
 using Xunit;
 
 namespace System.Buffers.Tests
 {
-    public class SlicesTests
+    public class BasicUnitTests
     {
         [Fact]
         public void ByteSpanEmptyCreateArrayTest()
@@ -116,34 +114,6 @@ namespace System.Buffers.Tests
         public void ByteReadOnlySpanCtorWithRangeValidCases(byte[] bytes, int start, int length)
         {
             ReadOnlySpan<byte> span = new ReadOnlySpan<byte>(bytes, start, length);
-        }
-
-        [Fact]
-        public void ByteSpanCtorWithRangeThrowsArgumentExceptionOnNull()
-        {
-            try
-            {
-                Span<byte> span = new Span<byte>(null, 0, 0);
-                Assert.True(false);
-            }
-            catch (Exception ex)
-            {
-                Assert.True(ex is ArgumentNullException);
-            }
-        }
-
-        [Fact]
-        public void ByteReadOnlySpanCtorWithRangeThrowsArgumentExceptionOnNull()
-        {
-            try
-            {
-                ReadOnlySpan<byte> span = new ReadOnlySpan<byte>(null, 0, 0);
-                Assert.True(false);
-            }
-            catch (Exception ex)
-            {
-                Assert.True(ex is ArgumentNullException);
-            }
         }
 
         [Theory]
@@ -337,7 +307,7 @@ namespace System.Buffers.Tests
 
             try
             {
-                var slice = array.AsSpan().Slice(0);
+                var slice = array.AsSpan(0);
                 Assert.True(false);
             }
             catch (Exception ex)
@@ -360,6 +330,36 @@ namespace System.Buffers.Tests
             {
                 Assert.True(ex is ArrayTypeMismatchException);
             }
+        }
+
+        [Fact]
+        public void OwnedBufferDisposedAfterFinalizerGCKeepAliveTest()
+        {
+            MemoryManager<byte> owned = new CustomMemoryForTest<byte>(new byte[1024]);
+            var buffer = owned.Memory;
+            var slice = buffer.Slice(1);
+
+            var span = buffer.Span;
+            var sliceSpan = slice.Span;
+
+            span[5] = 42;
+            sliceSpan[10] = 24;
+
+            GC.Collect(2);
+            GC.WaitForPendingFinalizers();
+
+            try
+            {
+                span = buffer.Span;
+                sliceSpan = slice.Span;
+            }
+            catch (ObjectDisposedException ex)
+            {
+                Assert.True(false, "There shouldn't be any Object Disposed Exception here. " + ex.Message);
+            }
+
+            Assert.Equal(42, span[5]);
+            Assert.Equal(24, sliceSpan[10]);
         }
     }
 }

@@ -2,8 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Generic;
-
 namespace System.Collections.Sequences
 {
     // This type is illustrating how to implement the new enumerable on linked node datastructure
@@ -28,50 +26,50 @@ namespace System.Collections.Sequences
 
         public int Length => _count;
 
-        public bool TryGet(ref Position position, out T item, bool advance = true)
+        public SequencePosition Start => new SequencePosition(_head, 0);
+
+        public bool TryGet(ref SequencePosition position, out T item, bool advance = true)
         {
-            item = default(T);
-
-            if(_count == 0) {
-                position = Position.AfterLast;
+            if(_count == 0 || position.Equals(default))
+            {
+                item = default;
                 return false;
             }
 
-            if (position.Equals(Position.AfterLast)) {
+            var node = (Node) position.GetObject();
+            var index = position.GetInteger();
+            if (node == null || index != 0) {
+                item = default;
+                position = default;
                 return false;
-            }
-
-            if(position.Equals(Position.First)) {
-                item = _head._item;
-                if (advance) position.ObjectPosition = _head._next;
-                if (position.ObjectPosition == null) position = Position.AfterLast;
-                return true;
-            }
-
-            var node = (Node)position.ObjectPosition;
-            
-            if (node == null) {
-                position = Position.AfterLast;
-                return false;
-            }
-
-            if (advance) {
-                if (node._next != null) {
-                    position.ObjectPosition = node._next;
-                    if (position.ObjectPosition == null) position = Position.AfterLast;
-                }
-                else {
-                    position = Position.AfterLast;
-                }
             }
 
             item = node._item;
+            if (advance) { position = new SequencePosition(node._next, 0); }
             return true;
         }
 
         public SequenceEnumerator<T> GetEnumerator()
         {
             return new SequenceEnumerator<T>(this);
+        }
+
+        public SequencePosition GetPosition(SequencePosition origin, long offset)
+        {
+            if (offset < 0) throw new InvalidOperationException("cannot seek backwards");
+            var node = (Node)origin.GetObject();
+            while(offset-- > 0)
+            {
+                if (node != null)
+                {
+                    node = node._next;
+                }
+                else
+                {
+                    throw new ArgumentOutOfRangeException(nameof(offset));
+                }
+            }
+            return new SequencePosition(node, 0);
         }
     }
 }

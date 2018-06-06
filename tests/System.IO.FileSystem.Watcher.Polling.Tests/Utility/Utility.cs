@@ -3,10 +3,7 @@
 
 using System;
 using System.IO;
-using System.Threading;
 using System.Runtime.CompilerServices;
-using Xunit;
-using System.IO.FileSystem;
 
 public static class Utility
 {
@@ -44,5 +41,12 @@ public static class Utility
         {
             Directory.Delete(path, true);
         }
+    }
+
+    public static string GetRandomDirectory()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        Directory.CreateDirectory(path);
+        return path;
     }
 }

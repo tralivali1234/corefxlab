@@ -2,20 +2,20 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System.Buffers;
+using System.Buffers.Text;
 using System.Diagnostics;
-using System.Text;
-using System.Text.Utf8;
 
-namespace System.Text.Formatting {
+namespace System.Text.Formatting
+{
 
     // This whole API is very speculative, i.e. I am not sure I am happy with the design
     // This API is trying to do composite formatting without boxing (or any other allocations).
-    // And because not all types in the platfrom implement IBufferFormattable (in particular built-in primitives don't), 
+    // And because not all types in the platfrom implement IBufferFormattable (in particular built-in primitives don't),
     // it needs to play some tricks with generic type parameters. But as you can see at the end of AppendUntyped, I am not sure how to tick the type system
     // not never box.
     public static class CompositeFormattingExtensions
     {
-        public static void Format<TFormatter, T0>(this TFormatter formatter, string compositeFormat, T0 arg0) where TFormatter : ITextOutput
+        public static void Format<TFormatter, T0>(this TFormatter formatter, string compositeFormat, T0 arg0) where TFormatter : ITextBufferWriter
         {
             var reader = new CompositeFormatReader(compositeFormat);
             while (true)
@@ -35,7 +35,7 @@ namespace System.Text.Formatting {
             }
         }
 
-        public static void Format<TFormatter, T0, T1>(this TFormatter formatter, string compositeFormat, T0 arg0, T1 arg1) where TFormatter : ITextOutput
+        public static void Format<TFormatter, T0, T1>(this TFormatter formatter, string compositeFormat, T0 arg0, T1 arg1) where TFormatter : ITextBufferWriter
         {
             var reader = new CompositeFormatReader(compositeFormat);
             while (true)
@@ -56,7 +56,7 @@ namespace System.Text.Formatting {
             }
         }
 
-        public static void Format<TFormatter, T0, T1, T2>(this TFormatter formatter, string compositeFormat, T0 arg0, T1 arg1, T2 arg2) where TFormatter : ITextOutput
+        public static void Format<TFormatter, T0, T1, T2>(this TFormatter formatter, string compositeFormat, T0 arg0, T1 arg1, T2 arg2) where TFormatter : ITextBufferWriter
         {
             var reader = new CompositeFormatReader(compositeFormat);
             while (true)
@@ -78,7 +78,7 @@ namespace System.Text.Formatting {
             }
         }
 
-        public static void Format<TFormatter, T0, T1, T2, T3>(this TFormatter formatter, string compositeFormat, T0 arg0, T1 arg1, T2 arg2, T3 arg3) where TFormatter : ITextOutput
+        public static void Format<TFormatter, T0, T1, T2, T3>(this TFormatter formatter, string compositeFormat, T0 arg0, T1 arg1, T2 arg2, T3 arg3) where TFormatter : ITextBufferWriter
         {
             var reader = new CompositeFormatReader(compositeFormat);
             while (true)
@@ -101,7 +101,7 @@ namespace System.Text.Formatting {
             }
         }
 
-        public static void Format<TFormatter, T0, T1, T2, T3, T4>(this TFormatter formatter, string compositeFormat, T0 arg0, T1 arg1, T2 arg2, T3 arg3, T4 arg4) where TFormatter : ITextOutput
+        public static void Format<TFormatter, T0, T1, T2, T3, T4>(this TFormatter formatter, string compositeFormat, T0 arg0, T1 arg1, T2 arg2, T3 arg3, T4 arg4) where TFormatter : ITextBufferWriter
         {
             var reader = new CompositeFormatReader(compositeFormat);
             while (true)
@@ -126,31 +126,25 @@ namespace System.Text.Formatting {
         }
 
         // TODO: this should be removed and an ability to append substrings should be added
-        static void Append<TFormatter>(this TFormatter formatter, string whole, int index, int count) where TFormatter : ITextOutput
+        static void Append<TFormatter>(this TFormatter formatter, string whole, int index, int count) where TFormatter : ITextBufferWriter
         {
-            var buffer = formatter.Buffer;
+            var buffer = formatter.GetSpan();
             var maxBytes = count << 4; // this is the worst case, i.e. 4 bytes per char
             while(buffer.Length < maxBytes)
             {
-                formatter.Enlarge(maxBytes);
-                buffer = formatter.Buffer;
+                buffer = formatter.GetSpan(maxBytes);
             }
 
             // this should be optimized using fixed pointer to substring, but I will wait with this till we design proper substring
 
-            var characters = whole.Slice(index, count);
-            int bytesWritten;
-            int charactersConsumed;
-
-            if (!formatter.Encoder.TryEncode(characters, buffer, out charactersConsumed, out bytesWritten))
+            var characters = whole.AsSpan(index, count);
+            if (!formatter.TryAppend(characters, formatter.SymbolTable))
             {
                 Debug.Assert(false, "this should never happen"); // because I pre-resized the buffer to 4 bytes per char at the top of this method.
             }
-
-            formatter.Advance(bytesWritten);
         }
 
-        static void AppendUntyped<TFormatter, T>(this TFormatter formatter, T value, TextFormat format) where TFormatter : ITextOutput
+        static void AppendUntyped<TFormatter, T>(this TFormatter formatter, T value, StandardFormat format) where TFormatter : ITextBufferWriter
         {
             #region Built in types
             var i32 = value as int?;
@@ -349,11 +343,9 @@ namespace System.Text.Formatting {
 
             CompositeSegment ParseInsertionPoint()
             {
-                uint arg;
-                int consumed;
                 char? formatSpecifier = null;
 
-                if (!TryParse(_compositeFormatString, _currentIndex, 5, out arg, out consumed))
+                if (!TryParse(_compositeFormatString, _currentIndex, 5, out uint arg, out int consumed))
                 {
                     throw new Exception("invalid insertion point");
                 }
@@ -376,8 +368,8 @@ namespace System.Text.Formatting {
                 }
 
                 _currentIndex++;
-                var parsedFormat = formatSpecifier.HasValue ? TextFormat.Parse(formatSpecifier.Value): default(TextFormat);
-                return CompositeSegment.InsertionPoint(arg, parsedFormat);
+                var StandardFormat = (formatSpecifier.HasValue && formatSpecifier.Value != 0) ? new StandardFormat(formatSpecifier.Value) : default;
+                return CompositeSegment.InsertionPoint(arg, StandardFormat);
             }
 
             public enum State : byte
@@ -389,11 +381,11 @@ namespace System.Text.Formatting {
 
             public struct CompositeSegment
             {
-                public TextFormat Format { get; private set; }
+                public StandardFormat Format { get; private set; }
                 public int Index { get; private set; }
                 public int Count { get; private set; }
 
-                public static CompositeSegment InsertionPoint(uint argIndex, TextFormat format)
+                public static CompositeSegment InsertionPoint(uint argIndex, StandardFormat format)
                 {
                     return new CompositeSegment() { Index = (int)argIndex, Format = format };
                 }

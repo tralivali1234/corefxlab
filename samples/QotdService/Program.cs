@@ -2,40 +2,31 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Buffers;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net.Libuv;
 using System.Text.Utf8;
-using System.Threading.Tasks;
 
-namespace QotdService
+class QotdService
 {
-    public class Program
+    static Utf8String quote = (Utf8String)"Insanity: doing the same thing over and over again and expecting different results. - Albert Einstein";
+
+    static void Main()
     {
-        public static void Main(string[] args)
+        var loop = new UVLoop();
+
+        var listener = new TcpListener("0.0.0.0", 17, loop);
+
+        listener.ConnectionAccepted += (Tcp connection) =>
         {
-            var buffer = new byte[1024];
-            var quote = new Utf8String("Insanity: doing the same thing over and over again and expecting different results. - Albert Einstein"); ;
-
-            var loop = new UVLoop();
-
-            var listener = new TcpListener("0.0.0.0", 17, loop);
-
-            listener.ConnectionAccepted += (Tcp connection) =>
+            connection.ReadCompleted += (data) =>
             {
-                connection.ReadCompleted += (data) =>
-                {
-                    quote.CopyTo(buffer);
-                    connection.TryWrite(buffer, quote.Length);
-                };
-
-                connection.ReadStart();
+                connection.TryWrite(quote.Bytes);
             };
 
-            listener.Listen();
-            loop.Run();
-        }
+            connection.ReadStart();
+        };
+
+        listener.Listen();
+        loop.Run();
     }
 }
+

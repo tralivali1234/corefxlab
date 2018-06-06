@@ -5,6 +5,8 @@
 
 using System.Globalization;
 using System.Text;
+using System.Buffers;
+using System.Buffers.Text;
 using Xunit;
 
 namespace System.Text.Formatting.Tests
@@ -13,7 +15,7 @@ namespace System.Text.Formatting.Tests
     {
         public void CheckTimeSpan(TimeSpan value, string format)
         {
-            var parsed = TextFormat.Parse(format);
+            var parsed = StandardFormat.Parse(format);
             var formatter = new StringFormatter();
             formatter.Append(value, parsed);
             var result = formatter.ToString();

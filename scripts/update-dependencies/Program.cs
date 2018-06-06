@@ -86,6 +86,7 @@ namespace Microsoft.Dotnet.Scripts
         {
             yield return GetBuildInfoDependency("Cli", "cli/master");
             yield return GetBuildInfoDependency("CoreFx", "corefx/master");
+            yield return GetBuildInfoDependency("CoreSetup", "core-setup/master");
         }
 
         private static DependencyBuildInfo GetBuildInfoDependency(string target, string fragment)
@@ -99,6 +100,8 @@ namespace Microsoft.Dotnet.Scripts
             yield return CreateRegexPropertyUpdater(config.DependencyFilePath, "SystemCompilerServicesUnsafeVersion", "System.Runtime.CompilerServices.Unsafe");
             yield return CreateRegexPropertyUpdater(config.DependencyFilePath, "SystemMemoryVersion", "System.Memory");
             yield return CreateRegexPropertyUpdater(config.DependencyFilePath, "SystemNumericsVectorsVersion", "System.Numerics.Vectors");
+            yield return CreateRegexPropertyUpdater(config.DependencyFilePath, "SystemBuffersVersion", "System.Buffers");
+            yield return CreateRegexPropertyUpdater(config.DependencyFilePath, "SystemIOPipelinesVersion", "System.IO.Pipelines");
             yield return CreateFileUpdater(config.CLIVersionFilePath, "Microsoft.DotNet.Cli.Utils");
         }
 

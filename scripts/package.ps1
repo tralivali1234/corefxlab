@@ -1,13 +1,15 @@
 ﻿Param(
     [string]$Configuration="Debug",
     [string]$ApiKey,
-    [string]$BuildVersion=[System.DateTime]::Now.ToString('eyyMMdd-1')
+    [string]$BuildVersion=[System.DateTime]::Now.ToString('preview2-yyMMdd-1')
 )
 
 $repoRoot = "$PSScriptRoot\.."
-$dotnetExePath="$repoRoot\dotnet\dotnet.exe"
+$dotnetExePath="$repoRoot\dotnetcli\dotnet.exe"
 $nugetPath = "$repoRoot\nuget\nuget.exe"
 $packagesPath = "$repoRoot\packages"
+
+$env:DOTNET_MULTILEVEL_LOOKUP = 0
 
 Function Ensure-Nuget-Exists {
     if (!(Test-Path "$nugetPath")) {
@@ -15,7 +17,7 @@ Function Ensure-Nuget-Exists {
             New-Item -ItemType directory -Path "$repoRoot\nuget"
         }
         Write-Host "nuget.exe not found. Downloading to $nugetPath"
-        Invoke-WebRequest "https://nuget.org/nuget.exe" -OutFile $nugetPath
+        Invoke-WebRequest "https://dist.nuget.org/win-x86-commandline/v4.3.0/nuget.exe" -OutFile $nugetPath
     }
 }
 
@@ -29,9 +31,10 @@ foreach ($file in [System.IO.Directory]::EnumerateFiles("$repoRoot\src", "System
     }
 }
 
+Ensure-Nuget-Exists
+
 if ($ApiKey)
 {
-    Ensure-Nuget-Exists
     foreach ($file in [System.IO.Directory]::EnumerateFiles("$packagesPath", "*.nupkg")) {
         try {
             Write-Host "Pushing package $file to MyGet..."
@@ -41,8 +44,14 @@ if ($ApiKey)
             else { 
                 $arguments = "push $file $apiKey -Source https://dotnet.myget.org/F/dotnet-corefxlab/api/v2/package"
             }
-            Start-Process -FilePath $nugetPath -ArgumentList $arguments -Wait -PassThru
-            Write-Host "done"
+            $process = Start-Process -FilePath $nugetPath -ArgumentList $arguments -Wait -PassThru -NoNewWindow
+            $RetVal = $process.ExitCode
+            if($RetVal -eq 0) {
+                Write-Host "done"
+            }
+            else {
+                Write-Error "Failed to push nuget package $file with error code $RetVal"
+            }
         } catch [System.Exception] {
             Write-Host "Failed to push nuget package $file with error $_.Exception.Message"
         }

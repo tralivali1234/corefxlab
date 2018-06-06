@@ -5,18 +5,16 @@
 using Microsoft.Net.Sockets;
 using System;
 using System.Buffers;
-using System.Collections.Sequences;
-using System.Diagnostics;
-using System.Text;
+using System.Buffers.Text;
 using System.Text.Formatting;
-using System.Text.Http;
+using System.Text.Http.Formatter;
 using System.Text.Utf8;
 
-namespace Microsoft.Net.Http
+namespace Microsoft.Net
 {
-    public class TcpConnectionFormatter : ITextOutput, IDisposable
+    public class TcpConnectionFormatter : ITextBufferWriter, IDisposable
     {
-        static byte[] s_terminator = new Utf8String("0\r\n\r\n").Bytes.ToArray();
+        static byte[] s_terminator = new Utf8Span("0\r\n\r\n").Bytes.ToArray();
         const int ChunkPrefixSize = 10;
 
         TcpConnection _connection;
@@ -30,15 +28,7 @@ namespace Microsoft.Net.Http
             _buffer = ArrayPool<byte>.Shared.Rent(bufferSize);
         }
 
-        public TextEncoder Encoder => TextEncoder.Utf8;
-
-        public Span<byte> Buffer {
-            get {
-                var buffer = _buffer.Slice(ChunkPrefixSize + _written);
-                if (buffer.Length > 2) return buffer.Slice(0, buffer.Length - 2);
-                return Span<byte>.Empty;
-            }
-        }
+        public SymbolTable SymbolTable => SymbolTable.InvariantUtf8;
 
         public void Advance(int bytes)
         {
@@ -46,12 +36,29 @@ namespace Microsoft.Net.Http
             if (_written >= _buffer.Length) throw new InvalidOperationException();
         }
 
-        public void Enlarge(int desiredBufferLength = 0)
+        public Memory<byte> GetMemory(int minimumLength = 0)
         {
             if (_written < 1) throw new NotImplementedException();
             Send();
             _written = 0;
+
+            var buffer = ((Memory<byte>)_buffer).Slice(ChunkPrefixSize + _written);
+            if (buffer.Length > 2) return buffer.Slice(0, buffer.Length - 2);
+            return Memory<byte>.Empty;
         }
+
+        public Span<byte> GetSpan(int minimumLength)
+        {
+            if (_written < 1) throw new NotImplementedException();
+            Send();
+            _written = 0;
+
+            Span<byte> buffer = _buffer.AsSpan(ChunkPrefixSize + _written);
+            if (buffer.Length > 2) return buffer.Slice(0, buffer.Length - 2);
+            return Span<byte>.Empty;
+        }
+
+        public int MaxBufferSize { get; } = Int32.MaxValue;
 
         private void Send()
         {
@@ -59,24 +66,24 @@ namespace Microsoft.Net.Http
             // if send headers
             if (!_headerSent)
             {
-                toSend = _buffer.Slice(ChunkPrefixSize, _written);
+                toSend = _buffer.AsSpan(ChunkPrefixSize, _written);
                 _written = 0;
                 _headerSent = true;
             }
             else
             {
-                var chunkPrefixBuffer = _buffer.Slice(0, ChunkPrefixSize);
+                var chunkPrefixBuffer = _buffer.AsSpan(0, ChunkPrefixSize);
                 var prefixLength = WriteChunkPrefix(chunkPrefixBuffer, _written);
 
                 _buffer[ChunkPrefixSize + _written++] = 13;
                 _buffer[ChunkPrefixSize + _written++] = 10;
 
-                toSend = _buffer.Slice(ChunkPrefixSize - prefixLength, _written + prefixLength);
+                toSend = _buffer.AsSpan(ChunkPrefixSize - prefixLength, _written + prefixLength);
                 _written = 0;
             }
 
             var array = toSend.ToArray();
-            Console.WriteLine(new Utf8String(toSend).ToString());
+            Console.WriteLine(new Utf8Span(toSend).ToString());
             _connection.Send(toSend);
         }
 
@@ -97,7 +104,7 @@ namespace Microsoft.Net.Http
         }
         int WriteChunkPrefix(Span<byte> chunkPrefixBuffer, int chunkLength)
         {
-            if (!PrimitiveFormatter.TryFormat(chunkLength, chunkPrefixBuffer, out var written, 'X'))
+            if (!Utf8Formatter.TryFormat(chunkLength, chunkPrefixBuffer, out var written, 'X'))
             {
                 throw new Exception("cannot format chunk length");
             }

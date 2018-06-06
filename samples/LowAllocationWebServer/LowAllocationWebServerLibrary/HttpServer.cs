@@ -6,18 +6,19 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Text.Formatting;
+using System.Text.Http.Formatter;
 using System.Text.Utf8;
-using System.Text.Http;
 using System.Threading.Tasks;
-using System.Text;
 using System.Threading;
+using System.Text.Http.Parser;
 
-namespace Microsoft.Net.Http
+namespace Microsoft.Net
 {
     public abstract class HttpServer
     {
         CancellationToken _cancellation;
         TcpServer _listener;
+        HttpParser s_parser = new HttpParser();
 
         public Log Log { get; protected set; }
 
@@ -57,11 +58,11 @@ namespace Microsoft.Net.Http
         {
             Log.LogVerbose("Processing Request");
 
-            using (OwnedBuffer rootBuffer = MemoryPool.Rent(RequestBufferSize)) {
-                OwnedBuffer requestBuffer = rootBuffer;
+            using (BufferSequence rootBuffer = new BufferSequence(RequestBufferSize)) {
+                BufferSequence requestBuffer = rootBuffer;
                 int totalWritten = 0;
                 while (true) {
-                    Span<byte> requestSpan = requestBuffer.Span;
+                    Span<byte> requestSpan = requestBuffer.Free;
 
                     int requestBytesRead = socket.Receive(requestSpan);
                     if (requestBytesRead == 0) {
@@ -72,20 +73,32 @@ namespace Microsoft.Net.Http
                     requestBuffer.Advance(requestBytesRead);
                     totalWritten += requestBytesRead;
                     if (requestBytesRead == requestSpan.Length) {
-                        requestBuffer = requestBuffer.Enlarge(RequestBufferSize);
+                        requestBuffer = requestBuffer.Append(RequestBufferSize);
                     }
                     else {
                         break;
                     }
                 }
 
-                var requestBytes = new ReadOnlyBytes(rootBuffer, totalWritten);
+                var requestBytes = new ReadOnlySequence<byte>(rootBuffer, 0, requestBuffer, requestBuffer.Memory.Length);
 
-                HttpRequest parsedRequest = HttpRequest.Parse(requestBytes);
-                Log.LogRequest(parsedRequest);
+                var request = new HttpRequest();
+                if(!s_parser.ParseRequestLine(ref request, requestBytes, out int consumed))
+                {
+                    throw new Exception();
+                }
+                requestBytes = requestBytes.Slice(consumed);
+                if (!s_parser.ParseHeaders(ref request, requestBytes, out consumed))
+                {
+                    throw new Exception();
+                }
+
+                var requestBody = requestBytes.Slice(consumed);
+
+                Log.LogRequest(request, requestBody);
 
                 using (var response = new TcpConnectionFormatter(socket, ResponseBufferSize)) {
-                    WriteResponse(parsedRequest, response);
+                    WriteResponse(ref request, requestBody, response);
                 }
 
                 socket.Close();
@@ -99,34 +112,32 @@ namespace Microsoft.Net.Http
         protected virtual void WriteResponseFor400(Span<byte> requestBytes, TcpConnectionFormatter response) // Bad Request
         {
             Log.LogMessage(Log.Level.Warning, "Request {0}, Response: 400 Bad Request", requestBytes.Length);
-            WriteCommonHeaders(ref response, HttpVersion.V1_1, 400, "Bad Request");
+            WriteCommonHeaders(ref response, Http.Version.Http11, 400, "Bad Request");
             response.AppendEoh();
         }
 
-        // TODO: HttpRequest is a large struct. We cannot pass it around like that
-        protected virtual void WriteResponseFor404(HttpRequest request, TcpConnectionFormatter response) // Not Found
+        protected virtual void WriteResponseFor404(ref HttpRequest request, TcpConnectionFormatter response) // Not Found
         {
-            Log.LogMessage(Log.Level.Warning, "Request {0}, Response: 404 Not Found", request.Path.ToUtf8String(TextEncoder.Utf8));
-            WriteCommonHeaders(ref response, HttpVersion.V1_1, 404, "Not Found");
+            Log.LogMessage(Log.Level.Warning, "Request {0}, Response: 404 Not Found", request.Path);
+            WriteCommonHeaders(ref response, Http.Version.Http11, 404, "Not Found");
             response.AppendEoh();
         }
 
-        // TODO: this is not a very general purpose routine. Maybe should not be in this base class?
         protected static void WriteCommonHeaders<TFormatter>(
             ref TFormatter formatter,
-            HttpVersion version,
+            Http.Version version,
             int statuCode,
             string reasonCode)
-            where TFormatter : ITextOutput
+            where TFormatter : ITextBufferWriter
         {
             var currentTime = DateTime.UtcNow;
-            formatter.AppendHttpStatusLine(version, statuCode, new Utf8String(reasonCode));
+            formatter.AppendHttpStatusLine(version, statuCode, new Utf8Span(reasonCode));
             formatter.Append("Transfer-Encoding : chunked\r\n");
             formatter.Append("Server : .NET Core Sample Server\r\n");
             formatter.Format("Date : {0:R}\r\n", DateTime.UtcNow);
         }
 
-        protected abstract void WriteResponse(HttpRequest request, TcpConnectionFormatter response);
+        protected abstract void WriteResponse(ref HttpRequest request, ReadOnlySequence<byte> body, TcpConnectionFormatter response);
     }
 
     public abstract class RoutingServer<T> : HttpServer
@@ -137,10 +148,10 @@ namespace Microsoft.Net.Http
         {
         }
 
-        protected override void WriteResponse(HttpRequest request, TcpConnectionFormatter response)
+        protected override void WriteResponse(ref HttpRequest request, ReadOnlySequence<byte> body, TcpConnectionFormatter response)
         {
-            if (!Apis.TryHandle(request, response)) {
-                WriteResponseFor404(request, response);
+            if (!Apis.TryHandle(request, body, response)) {
+                WriteResponseFor404(ref request, response);
             }
         }
     }

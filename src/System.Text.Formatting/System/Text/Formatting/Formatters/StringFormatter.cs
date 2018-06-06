@@ -2,16 +2,16 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System.Buffers;
+using System.Buffers.Text;
 using System.Collections.Sequences;
-using System.Text;
 
 namespace System.Text.Formatting
 {
-    public class StringFormatter : ITextOutput, IDisposable
+    public class StringFormatter : ITextBufferWriter, IDisposable
     {
         ResizableArray<byte> _buffer;
         ArrayPool<byte> _pool;
-        public TextEncoder Encoder { get; set; } = TextEncoder.Utf16;
+        public SymbolTable SymbolTable { get; set; } = SymbolTable.InvariantUtf16;
 
         public StringFormatter(int characterCapacity = 32, ArrayPool<byte> pool = null)
         {
@@ -56,25 +56,43 @@ namespace System.Text.Formatting
 
         public override string ToString()
         {
-            var text = Text.Encoding.Unicode.GetString(_buffer.Items, 0, _buffer.Count);
+            var text = Encoding.Unicode.GetString(_buffer.Items, 0, _buffer.Count);
             return text;
         }
 
-        Span<byte> IOutput.Buffer => _buffer.Free.AsSpan();
-
-        void IOutput.Enlarge(int desiredBufferLength)
+        Memory<byte> IBufferWriter<byte>.GetMemory(int minimumLength)
         {
-            if (desiredBufferLength < 1) desiredBufferLength = 1;
-            var doubleCount = _buffer.Free.Count * 2;
-            int newSize = desiredBufferLength > doubleCount ? desiredBufferLength : doubleCount;
-            var newArray = _pool.Rent(newSize + _buffer.Count);
-            var oldArray = _buffer.Resize(newArray);
-            _pool.Return(oldArray);
+            if (minimumLength < 1) minimumLength = 1;
+            if (_buffer.Free.Count < minimumLength)
+            {
+                var doubleCount = _buffer.Free.Count * 2;
+                int newSize = minimumLength > doubleCount ? minimumLength : doubleCount;
+                var newArray = _pool.Rent(newSize + _buffer.Count);
+                var oldArray = _buffer.Resize(newArray);
+                _pool.Return(oldArray);
+            }
+            return _buffer.Free;
         }
 
-        void IOutput.Advance(int bytes)
+        Span<byte> IBufferWriter<byte>.GetSpan(int minimumLength)
+        {
+            if (minimumLength < 1) minimumLength = 1;
+            if (_buffer.Free.Count < minimumLength)
+            {
+                var doubleCount = _buffer.Free.Count * 2;
+                int newSize = minimumLength > doubleCount ? minimumLength : doubleCount;
+                var newArray = _pool.Rent(newSize + _buffer.Count);
+                var oldArray = _buffer.Resize(newArray);
+                _pool.Return(oldArray);
+            }
+            return _buffer.Free;
+        }
+
+        void IBufferWriter<byte>.Advance(int bytes)
         {
             _buffer.Count += bytes;
         }
+
+        public int MaxBufferSize { get; } = Int32.MaxValue;
     }
 }

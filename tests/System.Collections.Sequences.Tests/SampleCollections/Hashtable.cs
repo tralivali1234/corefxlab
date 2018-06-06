@@ -87,26 +87,28 @@ namespace System.Collections.Sequences
 
         public int Length => _count;
 
-        public bool TryGet(ref Position position, out KeyValuePair<K, V> item, bool advance = true)
-        {
-            item = default(KeyValuePair<K, V>);
+        public SequencePosition Start => default;
 
-            if (_count == 0 | position.Equals(Position.AfterLast)) {
-                position = Position.AfterLast;
+        public bool TryGet(ref SequencePosition position, out KeyValuePair<K, V> item, bool advance = true)
+        {
+            item = default;
+
+            if (_count == 0 | position.Equals(default)) {
+                position = default;
                 return false;
             }
 
-            if (position.Equals(Position.First)) {
+            if (position.Equals(default)) {
                 var firstOccupiedSlot = FindFirstStartingAt(0);
                 if (firstOccupiedSlot == -1) {
-                    position = Position.AfterLast;
+                    position = default;
                     return false;
                 }
 
-                position.IntegerPosition = firstOccupiedSlot;
+                position = new SequencePosition(null, firstOccupiedSlot);
             }
 
-            var index = position.IntegerPosition;
+            var index = position.GetInteger();
             var entry = _entries[index];
             if (entry.IsEmpty) {
                 throw new InvalidOperationException();
@@ -114,9 +116,9 @@ namespace System.Collections.Sequences
 
             if (advance) {
                 var first = FindFirstStartingAt(index + 1);
-                position.IntegerPosition = first;
+                position = new SequencePosition(null, first);
                 if (first == -1) {
-                    position = Position.AfterLast;
+                    position = default;
                 }
             }
 
@@ -138,6 +140,14 @@ namespace System.Collections.Sequences
         public SequenceEnumerator<KeyValuePair<K, V>> GetEnumerator()
         {
             return new SequenceEnumerator<KeyValuePair<K, V>>(this);
+        }
+
+        public SequencePosition GetPosition(SequencePosition origin, long offset)
+        {
+            if (offset<0) throw new ArgumentOutOfRangeException(nameof(offset));
+            while (offset-- > 0 && TryGet(ref origin, out _));
+            if (offset == 0) return origin;
+            throw new ArgumentOutOfRangeException(nameof(offset));
         }
     }
 }

@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System;
-using System.Binary;
 using System.Runtime.InteropServices;
 using Xunit;
 using Xunit.Abstractions;
+
+using static System.Buffers.Binary.BinaryPrimitives;
+using static System.Runtime.InteropServices.MemoryMarshal;
 
 namespace System.Slices.Tests
 {
@@ -44,20 +45,22 @@ namespace System.Slices.Tests
 
             for (int i = 0; i < span.Length; i++)
             {
-                Assert.Equal(array[i], span.Slice(i).Read<byte>());
-                Assert.Equal(array[i], span.Slice(i).Read<MyByte>().Value);
+                Assert.Equal(array[i], Read<byte>(span.Slice(i)));
+                Assert.Equal(array[i], Read<MyByte>(span.Slice(i)).Value);
 
                 array[i] = unchecked((byte)(array[i] + 1));
-                Assert.Equal(array[i], span.Slice(i).Read<byte>());
-                Assert.Equal(array[i], span.Slice(i).Read<MyByte>().Value);
+                Assert.Equal(array[i], Read<byte>(span.Slice(i)));
+                Assert.Equal(array[i], Read<MyByte>(span.Slice(i)).Value);
 
-                span.Slice(i).Write<byte>(unchecked((byte)(array[i] + 1)));
-                Assert.Equal(array[i], span.Slice(i).Read<byte>());
-                Assert.Equal(array[i], span.Slice(i).Read<MyByte>().Value);
+                var byteValue = unchecked((byte)(array[i] + 1));
+                Write(span.Slice(i), ref byteValue);
+                Assert.Equal(array[i], Read<byte>(span.Slice(i)));
+                Assert.Equal(array[i], Read<MyByte>(span.Slice(i)).Value);
 
-                span.Slice(i).Write<MyByte>(unchecked(new MyByte((byte)(array[i] + 1))));
-                Assert.Equal(array[i], span.Slice(i).Read<byte>());
-                Assert.Equal(array[i], span.Slice(i).Read<MyByte>().Value);
+                var myByteValue = unchecked(new MyByte((byte)(array[i] + 1)));
+                Write(span.Slice(i), ref myByteValue);
+                Assert.Equal(array[i], Read<byte>(span.Slice(i)));
+                Assert.Equal(array[i], Read<MyByte>(span.Slice(i)).Value);
             }
         }
 
@@ -77,12 +80,12 @@ namespace System.Slices.Tests
 
             for (int i = 0; i < span.Length; i++)
             {
-                Assert.Equal(array[i], span.Slice(i).Read<byte>());
-                Assert.Equal(array[i], span.Slice(i).Read<MyByte>().Value);
+                Assert.Equal(array[i], Read<byte>(span.Slice(i)));
+                Assert.Equal(array[i], Read<MyByte>(span.Slice(i)).Value);
 
                 array[i] = unchecked((byte)(array[i] + 1));
-                Assert.Equal(array[i], span.Slice(i).Read<byte>());
-                Assert.Equal(array[i], span.Slice(i).Read<MyByte>().Value);
+                Assert.Equal(array[i], Read<byte>(span.Slice(i)));
+                Assert.Equal(array[i], Read<MyByte>(span.Slice(i)).Value);
             }
         }
 
@@ -149,22 +152,22 @@ namespace System.Slices.Tests
             new byte[] { 1, 2, 7, 7, 5, 6 }, 2, 3)]
         // copy one byte from the beginning at the end of other array
         [InlineData(
-            (byte[])null,
+            null,
             new byte[] { 7, 7, 7, 7, 7, 7 }, 0, 1,
             new byte[] { 7, 7, 7, 7, 7, 7 }, 6, 0)]
         // copy two bytes from the beginning at 5th element
         [InlineData(
-            (byte[])null,
+            null,
             new byte[] { 7, 7, 7, 7, 7, 7 }, 0, 2,
             new byte[] { 7, 7, 7, 7, 7, 7 }, 5, 1)]
         // copy one byte from the beginning at the end of other array
         [InlineData(
-            (byte[])null,
+            null,
             new byte[] { 7, 7, 7, 7, 7, 7 }, 5, 1,
             new byte[] { 7, 7, 7, 7, 7, 7 }, 6, 0)]
         // copy two bytes from the beginning at 5th element
         [InlineData(
-            (byte[])null,
+            null,
             new byte[] { 7, 7, 7, 7, 7, 7 }, 4, 2,
             new byte[] { 7, 7, 7, 7, 7, 7 }, 5, 1)]
         public void SpanOfByteCopyToAnotherSpanOfByteTwoDifferentBuffersValidCases(byte[] expected, byte[] a, int aidx, int acount, byte[] b, int bidx, int bcount)
@@ -260,22 +263,22 @@ namespace System.Slices.Tests
             new byte[] { 1, 2, 7, 7, 5, 6 }, 2, 3)]
         // copy one byte from the beginning at the end of other array
         [InlineData(
-            (byte[])null,
+            null,
             new byte[] { 7, 7, 7, 7, 7, 7 }, 0, 1,
             new byte[] { 7, 7, 7, 7, 7, 7 }, 6, 0)]
         // copy two bytes from the beginning at 5th element
         [InlineData(
-            (byte[])null,
+            null,
             new byte[] { 7, 7, 7, 7, 7, 7 }, 0, 2,
             new byte[] { 7, 7, 7, 7, 7, 7 }, 5, 1)]
         // copy one byte from the beginning at the end of other array
         [InlineData(
-            (byte[])null,
+            null,
             new byte[] { 7, 7, 7, 7, 7, 7 }, 5, 1,
             new byte[] { 7, 7, 7, 7, 7, 7 }, 6, 0)]
         // copy two bytes from the beginning at 5th element
         [InlineData(
-            (byte[])null,
+            null,
             new byte[] { 7, 7, 7, 7, 7, 7 }, 4, 2,
             new byte[] { 7, 7, 7, 7, 7, 7 }, 5, 1)]
         public void ReadOnlySpanOfByteCopyToAnotherSpanOfByteTwoDifferentBuffersValidCases(byte[] expected, byte[] a, int aidx, int acount, byte[] b, int bidx, int bcount)

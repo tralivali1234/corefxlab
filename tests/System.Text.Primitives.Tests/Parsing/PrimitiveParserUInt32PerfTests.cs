@@ -2,13 +2,10 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using System.Globalization;
 using Xunit;
 using Microsoft.Xunit.Performance;
+using System.Buffers.Text;
 
 namespace System.Text.Primitives.Tests
 {
@@ -50,11 +47,10 @@ namespace System.Text.Primitives.Tests
             {
                 using (iteration.StartMeasurement())
                 {
-                    for (int i = 0; i < LoadIterations; i++)
+                    for (int i = 0; i < TestHelper.LoadIterations; i++)
                     {
-                        uint value;
-                        uint.TryParse(text, out value);
-                        DoNotIgnore(value, 0);
+                        uint.TryParse(text, out uint value);
+                        TestHelper.DoNotIgnore(value, 0);
                     }
                 }
             }
@@ -67,11 +63,10 @@ namespace System.Text.Primitives.Tests
             {
                 using (iteration.StartMeasurement())
                 {
-                    for (int i = 0; i < LoadIterations; i++)
+                    for (int i = 0; i < TestHelper.LoadIterations; i++)
                     {
-                        uint value;
-                        uint.TryParse(s_UInt32TextArray[i % 10], out value);
-                        DoNotIgnore(value, 0);
+                        uint.TryParse(s_UInt32TextArray[i % 10], out uint value);
+                        TestHelper.DoNotIgnore(value, 0);
                     }
                 }
             }
@@ -87,11 +82,10 @@ namespace System.Text.Primitives.Tests
             {
                 using (iteration.StartMeasurement())
                 {
-                    for (int i = 0; i < LoadIterations; i++)
+                    for (int i = 0; i < TestHelper.LoadIterations; i++)
                     {
-                        uint value;
-                        uint.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out value);
-                        DoNotIgnore(value, 0);
+                        uint.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out uint value);
+                        TestHelper.DoNotIgnore(value, 0);
                     }
                 }
             }
@@ -104,11 +98,10 @@ namespace System.Text.Primitives.Tests
             {
                 using (iteration.StartMeasurement())
                 {
-                    for (int i = 0; i < LoadIterations; i++)
+                    for (int i = 0; i < TestHelper.LoadIterations; i++)
                     {
-                        uint value;
-                        uint.TryParse(s_UInt32TextArray[i % 10], NumberStyles.None, CultureInfo.InvariantCulture, out value);
-                        DoNotIgnore(value, 0);
+                        uint.TryParse(s_UInt32TextArray[i % 10], NumberStyles.None, CultureInfo.InvariantCulture, out uint value);
+                        TestHelper.DoNotIgnore(value, 0);
                     }
                 }
             }
@@ -124,11 +117,10 @@ namespace System.Text.Primitives.Tests
             {
                 using (iteration.StartMeasurement())
                 {
-                    for (int i = 0; i < LoadIterations; i++)
+                    for (int i = 0; i < TestHelper.LoadIterations; i++)
                     {
-                        uint value;
-                        uint.TryParse(text, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out value);
-                        DoNotIgnore(value, 0);
+                        uint.TryParse(text, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint value);
+                        TestHelper.DoNotIgnore(value, 0);
                     }
                 }
             }
@@ -141,164 +133,10 @@ namespace System.Text.Primitives.Tests
             {
                 using (iteration.StartMeasurement())
                 {
-                    for (int i = 0; i < LoadIterations; i++)
+                    for (int i = 0; i < TestHelper.LoadIterations; i++)
                     {
-                        uint value;
-                        uint.TryParse(s_UInt32TextArrayHex[i % 8], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out value);
-                        DoNotIgnore(value, 0);
-                    }
-                }
-            }
-        }
-
-        [Benchmark]
-        [InlineData("2134567890")] // standard parse
-        [InlineData("4294967295")] // max value
-        [InlineData("0")] // min value
-        private unsafe static void PrimitiveParserByteStarToUInt32(string text)
-        {
-            int length = text.Length;
-            byte[] utf8ByteArray = Encoding.UTF8.GetBytes(text);
-            foreach (var iteration in Benchmark.Iterations)
-            {
-                fixed (byte* utf8ByteStar = utf8ByteArray)
-                {
-                    using (iteration.StartMeasurement())
-                    {
-                        for (int i = 0; i < LoadIterations; i++)
-                        {
-                            uint value;
-                            PrimitiveParser.InvariantUtf8.TryParseUInt32(utf8ByteStar, length, out value);
-                            DoNotIgnore(value, 0);
-                        }
-                    }
-                }
-            }
-        }
-
-        [Benchmark]
-        private unsafe static void PrimitiveParserByteStarToUInt32_VariableLength()
-        {
-            List<byte[]> byteArrayList = new List<byte[]>();
-            foreach (string text in s_UInt32TextArray)
-            {
-                byte[] utf8ByteArray = Encoding.UTF8.GetBytes(text);
-                byteArrayList.Add(utf8ByteArray);
-            }
-            foreach (var iteration in Benchmark.Iterations)
-            {
-                using (iteration.StartMeasurement())
-                {
-                    for (int i = 0; i < LoadIterations; i++)
-                    {
-                        byte[] utf8ByteArray = byteArrayList[i % 10];
-                        fixed (byte* utf8ByteStar = utf8ByteArray)
-                        {
-                            uint value;
-                            PrimitiveParser.InvariantUtf8.TryParseUInt32(utf8ByteStar, utf8ByteArray.Length, out value);
-                            DoNotIgnore(value, 0);
-                        }
-                    }
-                }
-            }
-        }
-
-        [Benchmark]
-        [InlineData("2134567890")] // standard parse
-        [InlineData("4294967295")] // max value
-        [InlineData("0")] // min value
-        private unsafe static void PrimitiveParserByteStarToUInt32_BytesConsumed(string text)
-        {
-            int length = text.Length;
-            byte[] utf8ByteArray = Encoding.UTF8.GetBytes(text);
-            foreach (var iteration in Benchmark.Iterations)
-            {
-                fixed (byte* utf8ByteStar = utf8ByteArray)
-                {
-                    using (iteration.StartMeasurement())
-                    {
-                        for (int i = 0; i < LoadIterations; i++)
-                        {
-                            uint value;
-                            int bytesConsumed;
-                            PrimitiveParser.InvariantUtf8.TryParseUInt32(utf8ByteStar, length, out value, out bytesConsumed);
-                            DoNotIgnore(value, bytesConsumed);
-                        }
-                    }
-                }
-            }
-        }
-
-        [Benchmark]
-        private unsafe static void PrimitiveParserByteStarToUInt32_BytesConsumed_VariableLength()
-        {
-            List<byte[]> byteArrayList = new List<byte[]>();
-            foreach (string text in s_UInt32TextArray)
-            {
-                byte[] utf8ByteArray = Encoding.UTF8.GetBytes(text);
-                byteArrayList.Add(utf8ByteArray);
-            }
-            foreach (var iteration in Benchmark.Iterations)
-            {
-                using (iteration.StartMeasurement())
-                {
-                    for (int i = 0; i < LoadIterations; i++)
-                    {
-                        byte[] utf8ByteArray = byteArrayList[i % 10];
-                        fixed (byte* utf8ByteStar = utf8ByteArray)
-                        {
-                            uint value;
-                            int bytesConsumed;
-                            PrimitiveParser.InvariantUtf8.TryParseUInt32(utf8ByteStar, utf8ByteArray.Length, out value, out bytesConsumed);
-                            DoNotIgnore(value, bytesConsumed);
-                        }
-                    }
-                }
-            }
-        }
-
-        [Benchmark]
-        [InlineData("2134567890")] // standard parse
-        [InlineData("4294967295")] // max value
-        [InlineData("0")] // min value
-        private unsafe static void PrimitiveParserByteSpanToUInt32(string text)
-        {
-            byte[] utf8ByteArray = Encoding.UTF8.GetBytes(text);
-            var utf8ByteSpan = new ReadOnlySpan<byte>(utf8ByteArray);
-            foreach (var iteration in Benchmark.Iterations)
-            {
-                using (iteration.StartMeasurement())
-                {
-                    for (int i = 0; i < LoadIterations; i++)
-                    {
-                        uint value;
-                        PrimitiveParser.InvariantUtf8.TryParseUInt32(utf8ByteSpan, out value);
-                        DoNotIgnore(value, 0);
-                    }
-                }
-            }
-        }
-
-        [Benchmark]
-        private unsafe static void PrimitiveParserByteSpanToUInt32_VariableLength()
-        {
-            int textLength = s_UInt32TextArray.Length;
-            byte[][] utf8ByteArray = (byte[][])Array.CreateInstance(typeof(byte[]), textLength);
-            for (var i = 0; i < textLength; i++)
-            {
-                utf8ByteArray[i] = Encoding.UTF8.GetBytes(s_UInt32TextArray[i]);
-            }
-
-            foreach (var iteration in Benchmark.Iterations)
-            {
-                using (iteration.StartMeasurement())
-                {
-                    for (int i = 0; i < LoadIterations; i++)
-                    {
-                        ReadOnlySpan<byte> utf8ByteSpan = utf8ByteArray[i % textLength];
-                        uint value;
-                        PrimitiveParser.InvariantUtf8.TryParseUInt32(utf8ByteSpan, out value);
-                        DoNotIgnore(value, 0);
+                        uint.TryParse(s_UInt32TextArrayHex[i % 8], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint value);
+                        TestHelper.DoNotIgnore(value, 0);
                     }
                 }
             }
@@ -310,18 +148,16 @@ namespace System.Text.Primitives.Tests
         [InlineData("0")] // min value
         private unsafe static void PrimitiveParserByteSpanToUInt32_BytesConsumed(string text)
         {
-            byte[] utf8ByteArray = Encoding.UTF8.GetBytes(text);
+            byte[] utf8ByteArray = Text.Encoding.UTF8.GetBytes(text);
             var utf8ByteSpan = new ReadOnlySpan<byte>(utf8ByteArray);
             foreach (var iteration in Benchmark.Iterations)
             {
                 using (iteration.StartMeasurement())
                 {
-                    for (int i = 0; i < LoadIterations; i++)
+                    for (int i = 0; i < TestHelper.LoadIterations; i++)
                     {
-                        uint value;
-                        int bytesConsumed;
-                        PrimitiveParser.InvariantUtf8.TryParseUInt32(utf8ByteSpan, out value, out bytesConsumed);
-                        DoNotIgnore(value, bytesConsumed);
+                        Utf8Parser.TryParse(utf8ByteSpan, out uint value, out int bytesConsumed);
+                        TestHelper.DoNotIgnore(value, bytesConsumed);
                     }
                 }
             }
@@ -334,171 +170,17 @@ namespace System.Text.Primitives.Tests
             byte[][] utf8ByteArray = (byte[][])Array.CreateInstance(typeof(byte[]), textLength);
             for (var i = 0; i < textLength; i++)
             {
-                utf8ByteArray[i] = Encoding.UTF8.GetBytes(s_UInt32TextArray[i]);
+                utf8ByteArray[i] = Text.Encoding.UTF8.GetBytes(s_UInt32TextArray[i]);
             }
             foreach (var iteration in Benchmark.Iterations)
             {
                 using (iteration.StartMeasurement())
                 {
-                    for (int i = 0; i < LoadIterations; i++)
+                    for (int i = 0; i < TestHelper.LoadIterations; i++)
                     {
                         ReadOnlySpan<byte> utf8ByteSpan = utf8ByteArray[i % textLength];
-                        uint value;
-                        int bytesConsumed;
-                        PrimitiveParser.InvariantUtf8.TryParseUInt32(utf8ByteSpan, out value, out bytesConsumed);
-                        DoNotIgnore(value, bytesConsumed);
-                    }
-                }
-            }
-        }
-
-        [Benchmark]
-        [InlineData("abcdef")] // standard parse
-        [InlineData("ffffffff")] // max value
-        [InlineData("0")] // min value
-        private unsafe static void PrimitiveParserByteStarToUInt32Hex(string text)
-        {
-            int length = text.Length;
-            byte[] utf8ByteArray = Encoding.UTF8.GetBytes(text);
-            foreach (var iteration in Benchmark.Iterations)
-            {
-                fixed (byte* utf8ByteStar = utf8ByteArray)
-                {
-                    using (iteration.StartMeasurement())
-                    {
-                        for (int i = 0; i < LoadIterations; i++)
-                        {
-                            uint value;
-                            PrimitiveParser.InvariantUtf8.Hex.TryParseUInt32(utf8ByteStar, length, out value);
-                            DoNotIgnore(value, 0);
-                        }
-                    }
-                }
-            }
-        }
-
-        [Benchmark]
-        private unsafe static void PrimitiveParserByteStarToUInt32Hex_VariableLength()
-        {
-            List<byte[]> byteArrayList = new List<byte[]>();
-            foreach (string text in s_UInt32TextArrayHex)
-            {
-                byte[] utf8ByteArray = Encoding.UTF8.GetBytes(text);
-                byteArrayList.Add(utf8ByteArray);
-            }
-            foreach (var iteration in Benchmark.Iterations)
-            {
-                using (iteration.StartMeasurement())
-                {
-                    for (int i = 0; i < LoadIterations; i++)
-                    {
-                        byte[] utf8ByteArray = byteArrayList[i % 8];
-                        fixed (byte* utf8ByteStar = utf8ByteArray)
-                        {
-                            uint value;
-                            PrimitiveParser.InvariantUtf8.Hex.TryParseUInt32(utf8ByteStar, utf8ByteArray.Length, out value);
-                            DoNotIgnore(value, 0);
-                        }
-                    }
-                }
-            }
-        }
-
-        [Benchmark]
-        [InlineData("abcdef")] // standard parse
-        [InlineData("ffffffff")] // max value
-        [InlineData("0")] // min value
-        private unsafe static void PrimitiveParserByteStarToUInt32Hex_BytesConsumed(string text)
-        {
-            int length = text.Length;
-            byte[] utf8ByteArray = Encoding.UTF8.GetBytes(text);
-            foreach (var iteration in Benchmark.Iterations)
-            {
-                fixed (byte* utf8ByteStar = utf8ByteArray)
-                {
-                    using (iteration.StartMeasurement())
-                    {
-                        for (int i = 0; i < LoadIterations; i++)
-                        {
-                            uint value;
-                            int bytesConsumed;
-                            PrimitiveParser.InvariantUtf8.Hex.TryParseUInt32(utf8ByteStar, length, out value, out bytesConsumed);
-                            DoNotIgnore(value, bytesConsumed);
-                        }
-                    }
-                }
-            }
-        }
-
-        [Benchmark]
-        private unsafe static void PrimitiveParserByteStarToUInt32Hex_BytesConsumed_VariableLength()
-        {
-            List<byte[]> byteArrayList = new List<byte[]>();
-            foreach (string text in s_UInt32TextArrayHex)
-            {
-                byte[] utf8ByteArray = Encoding.UTF8.GetBytes(text);
-                byteArrayList.Add(utf8ByteArray);
-            }
-            foreach (var iteration in Benchmark.Iterations)
-            {
-                using (iteration.StartMeasurement())
-                {
-                    for (int i = 0; i < LoadIterations; i++)
-                    {
-                        byte[] utf8ByteArray = byteArrayList[i % 8];
-                        fixed (byte* utf8ByteStar = utf8ByteArray)
-                        {
-                            uint value;
-                            int bytesConsumed;
-                            PrimitiveParser.InvariantUtf8.Hex.TryParseUInt32(utf8ByteStar, utf8ByteArray.Length, out value, out bytesConsumed);
-                            DoNotIgnore(value, bytesConsumed);
-                        }
-                    }
-                }
-            }
-        }
-
-        [Benchmark]
-        [InlineData("abcdef")] // standard parse
-        [InlineData("ffffffff")] // max value
-        [InlineData("0")] // min value
-        private unsafe static void PrimitiveParserByteSpanToUInt32Hex(string text)
-        {
-            byte[] utf8ByteArray = Encoding.UTF8.GetBytes(text);
-            var utf8ByteSpan = new ReadOnlySpan<byte>(utf8ByteArray);
-            foreach (var iteration in Benchmark.Iterations)
-            {
-                using (iteration.StartMeasurement())
-                {
-                    for (int i = 0; i < LoadIterations; i++)
-                    {
-                        uint value;
-                        PrimitiveParser.InvariantUtf8.Hex.TryParseUInt32(utf8ByteSpan, out value);
-                        DoNotIgnore(value, 0);
-                    }
-                }
-            }
-        }
-
-        [Benchmark]
-        private unsafe static void PrimitiveParserByteSpanToUInt32Hex_VariableLength()
-        {
-            int textLength = s_UInt32TextArrayHex.Length;
-            byte[][] utf8ByteArray = (byte[][])Array.CreateInstance(typeof(byte[]), textLength);
-            for (var i = 0; i < textLength; i++)
-            {
-                utf8ByteArray[i] = Encoding.UTF8.GetBytes(s_UInt32TextArrayHex[i]);
-            }
-            foreach (var iteration in Benchmark.Iterations)
-            {
-                using (iteration.StartMeasurement())
-                {
-                    for (int i = 0; i < LoadIterations; i++)
-                    {
-                        ReadOnlySpan<byte> utf8ByteSpan = utf8ByteArray[i % textLength];
-                        uint value;
-                        PrimitiveParser.InvariantUtf8.Hex.TryParseUInt32(utf8ByteSpan, out value);
-                        DoNotIgnore(value, 0);
+                        Utf8Parser.TryParse(utf8ByteSpan, out uint value, out int bytesConsumed);
+                        TestHelper.DoNotIgnore(value, bytesConsumed);
                     }
                 }
             }
@@ -510,18 +192,16 @@ namespace System.Text.Primitives.Tests
         [InlineData("0")] // min value
         private unsafe static void PrimitiveParserByteSpanToUInt32Hex_BytesConsumed(string text)
         {
-            byte[] utf8ByteArray = Encoding.UTF8.GetBytes(text);
+            byte[] utf8ByteArray = Text.Encoding.UTF8.GetBytes(text);
             var utf8ByteSpan = new ReadOnlySpan<byte>(utf8ByteArray);
             foreach (var iteration in Benchmark.Iterations)
             {
                 using (iteration.StartMeasurement())
                 {
-                    for (int i = 0; i < LoadIterations; i++)
+                    for (int i = 0; i < TestHelper.LoadIterations; i++)
                     {
-                        uint value;
-                        int bytesConsumed;
-                        PrimitiveParser.InvariantUtf8.Hex.TryParseUInt32(utf8ByteSpan, out value, out bytesConsumed);
-                        DoNotIgnore(value, bytesConsumed);
+                        Utf8Parser.TryParse(utf8ByteSpan, out uint value, out int bytesConsumed, 'X');
+                        TestHelper.DoNotIgnore(value, bytesConsumed);
                     }
                 }
             }
@@ -534,19 +214,17 @@ namespace System.Text.Primitives.Tests
             byte[][] utf8ByteArray = (byte[][])Array.CreateInstance(typeof(byte[]), textLength);
             for (var i = 0; i < textLength; i++)
             {
-                utf8ByteArray[i] = Encoding.UTF8.GetBytes(s_UInt32TextArrayHex[i]);
+                utf8ByteArray[i] = Text.Encoding.UTF8.GetBytes(s_UInt32TextArrayHex[i]);
             }
             foreach (var iteration in Benchmark.Iterations)
             {
                 using (iteration.StartMeasurement())
                 {
-                    for (int i = 0; i < LoadIterations; i++)
+                    for (int i = 0; i < TestHelper.LoadIterations; i++)
                     {
                         ReadOnlySpan<byte> utf8ByteSpan = utf8ByteArray[i % textLength];
-                        uint value;
-                        int bytesConsumed;
-                        PrimitiveParser.InvariantUtf8.Hex.TryParseUInt32(utf8ByteSpan, out value, out bytesConsumed);
-                        DoNotIgnore(value, bytesConsumed);
+                        Utf8Parser.TryParse(utf8ByteSpan, out uint value, out int bytesConsumed, 'X');
+                        TestHelper.DoNotIgnore(value, bytesConsumed);
                     }
                 }
             }

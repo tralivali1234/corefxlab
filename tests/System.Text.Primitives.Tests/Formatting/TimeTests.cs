@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using System.Buffers;
+using System.Buffers.Text;
 using System.Globalization;
 using Xunit;
 
@@ -10,25 +12,26 @@ namespace System.Text.Primitives.Tests
     {
         const int NumberOfRandomSamples = 1000;
 
-        static readonly TextEncoder[] Encoders = new TextEncoder[]
+        static readonly SymbolTable[] SymbolTables = new SymbolTable[]
         {
-            TextEncoder.Utf8,
-            TextEncoder.Utf16,
+            SymbolTable.InvariantUtf8,
+            SymbolTable.InvariantUtf16,
         };
 
         [Theory]
         [InlineData('G')]
         [InlineData('O')]
         [InlineData('R')]
+        [InlineData('l')]
         public void SpecificDateTimeTests(char format)
         {
-            foreach (var encoder in Encoders)
+            foreach (var symbolTable in SymbolTables)
             {
-                TestDateTimeFormat(DateTime.MinValue, format, encoder);
-                TestDateTimeFormat(DateTime.MaxValue, format, encoder);
-                TestDateTimeFormat(new DateTime(1, 1, 1), format, encoder);
-                TestDateTimeFormat(new DateTime(9999, 12, 31), format, encoder);
-                TestDateTimeFormat(new DateTime(2004, 2, 29), format, encoder);
+                TestDateTimeFormat(DateTime.MinValue, format, symbolTable);
+                TestDateTimeFormat(DateTime.MaxValue, format, symbolTable);
+                TestDateTimeFormat(new DateTime(1, 1, 1), format, symbolTable);
+                TestDateTimeFormat(new DateTime(9999, 12, 31), format, symbolTable);
+                TestDateTimeFormat(new DateTime(2004, 2, 29), format, symbolTable);
             }
         }
 
@@ -36,26 +39,31 @@ namespace System.Text.Primitives.Tests
         [InlineData('G')]
         [InlineData('O')]
         [InlineData('R')]
+        [InlineData('l')]
         public void RandomDateTimeTests(char format)
         {
             for (var i = 0; i < NumberOfRandomSamples; i++)
             {
                 var dt = CreateRandomDate();
-                foreach (var encoder in Encoders)
+                foreach (var symbolTable in SymbolTables)
                 {
-                    TestDateTimeFormat(dt, format, encoder);
+                    TestDateTimeFormat(dt, format, symbolTable);
                 }
             }
         }
 
-        static void TestDateTimeFormat(DateTime dt, char format, TextEncoder encoder)
+        static void TestDateTimeFormat(DateTime dt, char format, SymbolTable symbolTable)
         {
-            var expected = dt.ToString(format.ToString(), CultureInfo.InvariantCulture);
+            string expected;
+            if (format == 'l')
+                expected = dt.ToString("R", CultureInfo.InvariantCulture).ToLowerInvariant();
+            else
+                expected = dt.ToString(format.ToString(), CultureInfo.InvariantCulture);           
 
             var span = new Span<byte>(new byte[256]);
-            Assert.True(PrimitiveFormatter.TryFormat(dt, span, out int written, format, encoder));
+            Assert.True(CustomFormatter.TryFormat(dt, span, out int written, format, symbolTable));
 
-            var actual = TestHelper.SpanToString(span.Slice(0, written), encoder);
+            var actual = TestHelper.SpanToString(span.Slice(0, written), symbolTable);
             Assert.Equal(expected, actual);
         }
 
@@ -64,29 +72,35 @@ namespace System.Text.Primitives.Tests
         [InlineData('G')]
         [InlineData('O')]
         [InlineData('R')]
+        [InlineData('l')]
         public void RandomDateTimeOffsetTests(char format)
         {
             for (var i = 0; i < NumberOfRandomSamples; i++)
             {
                 var dto = CreateRandomDateOffset();
-                foreach (var encoder in Encoders)
+                foreach (var symbolTable in SymbolTables)
                 {
-                    TestDateTimeOffsetFormat(dto, format, encoder);
+                    TestDateTimeOffsetFormat(dto, format, symbolTable);
                 }
             }
         }
 
-        static void TestDateTimeOffsetFormat(DateTimeOffset dto, char formatChar, TextEncoder encoder)
+        static void TestDateTimeOffsetFormat(DateTimeOffset dto, char formatChar, SymbolTable symbolTable)
         {
-            TextFormat format = (formatChar == 0) ? default(TextFormat) : formatChar;
-            string expected = (format.IsDefault)
-                ? dto.ToString(CultureInfo.InvariantCulture)
-                : dto.ToString(formatChar.ToString(), CultureInfo.InvariantCulture);
+            StandardFormat format = (formatChar == 0) ? default(StandardFormat) : formatChar;
+
+            string expected;
+            if (formatChar == 'l') {
+                expected = dto.ToString("R", CultureInfo.InvariantCulture).ToLowerInvariant();
+            }
+            else {
+                expected = (format.IsDefault) ? dto.ToString(CultureInfo.InvariantCulture) : dto.ToString(formatChar.ToString(), CultureInfo.InvariantCulture);
+            }
 
             var span = new Span<byte>(new byte[256]);
-            Assert.True(PrimitiveFormatter.TryFormat(dto, span, out int written, format, encoder));
+            Assert.True(CustomFormatter.TryFormat(dto, span, out int written, format, symbolTable));
 
-            var actual = TestHelper.SpanToString(span.Slice(0, written), encoder);
+            var actual = TestHelper.SpanToString(span.Slice(0, written), symbolTable);
             Assert.Equal(expected, actual);
         }
 
@@ -97,21 +111,21 @@ namespace System.Text.Primitives.Tests
         [InlineData('G')]
         public void SpecificTimeSpanTests(char format)
         {
-            foreach (var encoder in Encoders)
+            foreach (var symbolTable in SymbolTables)
             {
-                TestTimeSpanFormat(TimeSpan.MinValue, format, encoder);
-                TestTimeSpanFormat(TimeSpan.MaxValue, format, encoder);
-                TestTimeSpanFormat(new TimeSpan(0), format, encoder);
-                TestTimeSpanFormat(new TimeSpan(-1), format, encoder);
-                TestTimeSpanFormat(new TimeSpan(1), format, encoder);
-                TestTimeSpanFormat(TimeSpan.FromDays(-1), format, encoder);
-                TestTimeSpanFormat(TimeSpan.FromDays(1), format, encoder);
-                TestTimeSpanFormat(TimeSpan.FromHours(-1), format, encoder);
-                TestTimeSpanFormat(TimeSpan.FromHours(1), format, encoder);
-                TestTimeSpanFormat(TimeSpan.FromMinutes(-1), format, encoder);
-                TestTimeSpanFormat(TimeSpan.FromMinutes(1), format, encoder);
-                TestTimeSpanFormat(TimeSpan.FromSeconds(-1), format, encoder);
-                TestTimeSpanFormat(TimeSpan.FromSeconds(1), format, encoder);
+                TestTimeSpanFormat(TimeSpan.MinValue, format, symbolTable);
+                TestTimeSpanFormat(TimeSpan.MaxValue, format, symbolTable);
+                TestTimeSpanFormat(new TimeSpan(0), format, symbolTable);
+                TestTimeSpanFormat(new TimeSpan(-1), format, symbolTable);
+                TestTimeSpanFormat(new TimeSpan(1), format, symbolTable);
+                TestTimeSpanFormat(TimeSpan.FromDays(-1), format, symbolTable);
+                TestTimeSpanFormat(TimeSpan.FromDays(1), format, symbolTable);
+                TestTimeSpanFormat(TimeSpan.FromHours(-1), format, symbolTable);
+                TestTimeSpanFormat(TimeSpan.FromHours(1), format, symbolTable);
+                TestTimeSpanFormat(TimeSpan.FromMinutes(-1), format, symbolTable);
+                TestTimeSpanFormat(TimeSpan.FromMinutes(1), format, symbolTable);
+                TestTimeSpanFormat(TimeSpan.FromSeconds(-1), format, symbolTable);
+                TestTimeSpanFormat(TimeSpan.FromSeconds(1), format, symbolTable);
             }
         }
 
@@ -125,21 +139,21 @@ namespace System.Text.Primitives.Tests
             for (var i = 0; i < NumberOfRandomSamples; i++)
             {
                 var ts = CreateRandomTimeSpan();
-                foreach (var encoder in Encoders)
+                foreach (var symbolTable in SymbolTables)
                 {
-                    TestTimeSpanFormat(ts, format, encoder);
+                    TestTimeSpanFormat(ts, format, symbolTable);
                 }
             }
         }
 
-        static void TestTimeSpanFormat(TimeSpan ts, char format, TextEncoder encoder)
+        static void TestTimeSpanFormat(TimeSpan ts, char format, SymbolTable symbolTable)
         {
             var expected = ts.ToString(format.ToString(), CultureInfo.InvariantCulture);
 
             var span = new Span<byte>(new byte[256]);
-            Assert.True(PrimitiveFormatter.TryFormat(ts, span, out int written, format, encoder));
+            Assert.True(CustomFormatter.TryFormat(ts, span, out int written, format, symbolTable));
 
-            var actual = TestHelper.SpanToString(span.Slice(0, written), encoder);
+            var actual = TestHelper.SpanToString(span.Slice(0, written), symbolTable);
             Assert.Equal(expected, actual);
         }
 

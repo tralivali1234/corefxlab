@@ -1,25 +1,25 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <Import Project="..\..\tools\common.props" />
-  
+
   <PropertyGroup>
-    <TargetFramework>netcoreapp2.0</TargetFramework>
+    <TargetFramework>netcoreapp2.1</TargetFramework>
     <DebugType>portable</DebugType>
     <AssemblyName>PerfHarness</AssemblyName>
     <OutputType>Exe</OutputType>
     <PackageId>PerfHarness</PackageId>
-    <PackageTargetFallback>$(PackageTargetFallback);dnxcore50</PackageTargetFallback>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\tests\Benchmarks\Benchmarks.csproj" />
     <ProjectReference Include="..\..\tests\System.Binary.Base64.Tests\System.Binary.Base64.Tests.csproj" />
-    <ProjectReference Include="..\..\tests\System.Buffers.Primitives.Tests\System.Buffers.Primitives.Tests.csproj" />
     <ProjectReference Include="..\..\tests\System.Text.Primitives.Tests\System.Text.Primitives.Tests.csproj" />
+    <ProjectReference Include="..\..\tests\System.Text.JsonLab.Tests\System.Text.JsonLab.Tests.csproj" />
+    <ProjectReference Include="..\..\tests\System.IO.Compression.Tests\System.IO.Compression.Tests.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="xunit.performance.api" Version="1.0.0-alpha-build0049" />
-    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="1.0.0-alpha-experimental">
+    <PackageReference Include="xunit.performance.api" Version="$(XunitPerformanceVersion)" />
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="1.0.3-alpha-experimental">
     <IncludeAssets>All</IncludeAssets>
   </PackageReference>
   </ItemGroup>

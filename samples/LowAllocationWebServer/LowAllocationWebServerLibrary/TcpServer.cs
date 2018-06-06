@@ -4,7 +4,7 @@
 
 using Microsoft.Net.Interop;
 using System;
-using System.Buffers;
+using System.Runtime.InteropServices;
 
 namespace Microsoft.Net.Sockets
 {
@@ -14,8 +14,7 @@ namespace Microsoft.Net.Sockets
         public TcpServer(ushort port, byte address1, byte address2, byte address3, byte address4)
         {
             var version = new TcpServer.Version(2, 2);
-            WSDATA data;
-            int result = SocketImports.WSAStartup((short)version.Raw, out data);
+            int result = SocketImports.WSAStartup((short)version.Raw, out WSDATA data);
             if (result != 0)
             {
                 var error = SocketImports.WSAGetLastError();
@@ -165,14 +164,14 @@ namespace Microsoft.Net.Sockets
         public unsafe int Send(ReadOnlySpan<byte> buffer)
         {
             // TODO: This can work with Span<byte> because it's synchronous but we need async pinning support
-            fixed (byte* bytes = &buffer.DangerousGetPinnableReference())
+            fixed (byte* bytes = &MemoryMarshal.GetReference(buffer))
             {
                 IntPtr pointer = new IntPtr(bytes);
                 return SendPinned(pointer, buffer.Length);
             }
         }
 
-        public int Send(ReadOnlyBuffer<byte> buffer)
+        public int Send(ReadOnlyMemory<byte> buffer)
         {
             return Send(buffer.Span);
         }
@@ -195,14 +194,14 @@ namespace Microsoft.Net.Sockets
         public unsafe int Receive(Span<byte> buffer)
         {
             // TODO: This can work with Span<byte> because it's synchronous but we need async pinning support
-            fixed (byte* bytes = &buffer.DangerousGetPinnableReference())
+            fixed (byte* bytes = &MemoryMarshal.GetReference(buffer))
             {
                 IntPtr pointer = new IntPtr(bytes);
                 return ReceivePinned(pointer, buffer.Length);
             }
         }
 
-        public int Receive(Buffer<byte> buffer)
+        public int Receive(Memory<byte> buffer)
         {
             return Receive(buffer.Span);
         }

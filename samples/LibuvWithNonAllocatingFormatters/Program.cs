@@ -3,11 +3,10 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
-using System.Buffers;
-using System.Collections.Generic;
+using System.Buffers.Native;
+using System.Buffers.Text;
 using System.Linq;
 using System.Net.Libuv;
-using System.Text;
 using System.Text.Formatting;
 using System.Text.Utf8;
 using System.Threading.Tasks;
@@ -79,12 +78,12 @@ namespace LibuvWithNonAllocatingFormatters
                     {
                         unsafe
                         {
-                            var requestString = new Utf8String(data.Span);
+                            var requestString = new Utf8Span(data.Span);
                             Console.WriteLine("*REQUEST:\n {0}", requestString.ToString());
                         }
                     }
 
-                    var formatter = new ArrayFormatter(512, TextEncoder.Utf8);
+                    var formatter = new ArrayFormatter(512, SymbolTable.InvariantUtf8);
                     formatter.Clear();
                     formatter.Append("HTTP/1.1 200 OK");
                     formatter.Append("\r\n\r\n");
@@ -95,8 +94,9 @@ namespace LibuvWithNonAllocatingFormatters
                     }
 
                     var segment = formatter.Formatted;
-                    using (var memory = new OwnedPinnedBuffer<byte>(segment.Array)) {
-                        connection.TryWrite(memory.Buffer.Slice(segment.Offset, segment.Count));
+                    using (var memory = new OwnedPinnedBuffer<byte>(segment.Array))
+                    {
+                        connection.TryWrite(memory.Memory.Slice(segment.Offset, segment.Count));
                         connection.Dispose();
                     }
                 };

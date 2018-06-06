@@ -2,7 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System.Buffers;
-using System.Text;
+using System.Buffers.Text;
 using System.IO;
 using Xunit;
 
@@ -19,27 +19,16 @@ namespace System.Text.Formatting.Tests
             _inMonths = inMonths;
         }
 
-        public bool TryFormat(Span<byte> buffer, out int bytesWritten, TextFormat format, TextEncoder encoder)
+        public bool TryFormat(Span<byte> buffer, out int bytesWritten, StandardFormat format, SymbolTable symbolTable)
         {
-            if (!PrimitiveFormatter.TryFormat(_age, buffer, out bytesWritten, format, encoder))
-            {
+            if (!CustomFormatter.TryFormat(_age, buffer, out bytesWritten, format, symbolTable))
                 return false;
-            }
 
             char symbol = _inMonths ? 'm' : 'y';
-            int consumed;
-            int symbolBytes;
+            if (!symbolTable.TryEncode((byte)symbol, buffer.Slice(bytesWritten), out int written))
+                return false;
 
-            unsafe
-            {
-                ReadOnlySpan<char> symbolSpan = new ReadOnlySpan<char>(&symbol, 1);
-                if (!encoder.TryEncode(symbolSpan, buffer.Slice(bytesWritten), out consumed, out symbolBytes))
-                {
-                    return false;
-                }
-            }
-
-            bytesWritten += symbolBytes;
+            bytesWritten += written;
             return true;
         }
 
@@ -73,7 +62,7 @@ namespace System.Text.Formatting.Tests
         {
             byte[] buffer = new byte[1024];
             MemoryStream stream = new MemoryStream(buffer);
-            using (var writer = new StreamFormatter(stream, TextEncoder.Utf8, pool))
+            using (var writer = new StreamFormatter(stream, SymbolTable.InvariantUtf8, pool))
             {
                 writer.Append(new Age(56));
                 writer.Append(new Age(14, inMonths: true));

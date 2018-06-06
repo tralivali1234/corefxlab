@@ -2,7 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Linq;
 using Xunit;
 
 namespace System.Text.Encodings.Web.Utf8.Tests
@@ -13,7 +12,8 @@ namespace System.Text.Encodings.Web.Utf8.Tests
     /// The derived test classes need to override <paramref name="TestCore"/> method to 
     /// alter the core test logic on the same set of test scenarios.
     /// </summary>
-    public abstract class UrlEncoderTests
+
+    public abstract class UrlDecoderTests : UrlCoderTests
     {
         [Theory]
         [InlineData("/foo/bar", "/foo/bar")]
@@ -65,6 +65,7 @@ namespace System.Text.Encodings.Web.Utf8.Tests
         [InlineData("%", "%")]
         [InlineData("%%", "%%")]
         [InlineData("%A", "%A")]
+        [InlineData("%AY", "%AY")]
         [InlineData("%Y", "%Y")]
         // Mixed
         [InlineData("%%32", "%2")]
@@ -87,10 +88,12 @@ namespace System.Text.Encodings.Web.Utf8.Tests
         [InlineData("%C2%B5%40%C3%9F%C3%B6%C3%A4%C3%BC%C3%A0%C3%A1", "µ@ßöäüàá")]
         [InlineData("%C2%B5%40%C3%9F%C3%B6%C3%A4%C3%BC%C3%A0%C3%A", "µ@ßöäüà%C3%A")]
         public void DecodeWithBoundary(string raw, string expect) => TestCore(raw, expect);
+    }
 
-        protected abstract void TestCore(string raw, string expected);
+    public abstract class UrlCoderTests
+    {
+        protected abstract void TestCore(string encoded, string decoded);
 
-        protected Span<byte> GetBytes(string sample) =>
-            new Span<byte>(sample.Select(c => (byte)c).ToArray());
+        protected ReadOnlySpan<byte> GetBytes(string str) => Encoding.UTF8.GetBytes(str);
     }
 }

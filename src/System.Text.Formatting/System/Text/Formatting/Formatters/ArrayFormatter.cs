@@ -3,53 +3,82 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Buffers;
+using System.Buffers.Text;
 using System.Collections.Sequences;
+using System.Runtime.CompilerServices;
 
 namespace System.Text.Formatting
 {
-    public class ArrayFormatter : ITextOutput
+    public class ArrayFormatter : ITextBufferWriter, IDisposable
     {
         ResizableArray<byte> _buffer;
-        TextEncoder _encoder;
+        SymbolTable _symbolTable;
         ArrayPool<byte> _pool;
 
-        public ArrayFormatter(int capacity, TextEncoder encoder, ArrayPool<byte> pool = null)
+        public ArrayFormatter(int capacity, SymbolTable symbolTable, ArrayPool<byte> pool = null)
         {
-            _pool = pool != null ? pool : ArrayPool<byte>.Shared;
-            _encoder = encoder;
+            _pool = pool ?? ArrayPool<byte>.Shared;
+            _symbolTable = symbolTable;
             _buffer = new ResizableArray<byte>(_pool.Rent(capacity));
         }
 
         public int CommitedByteCount => _buffer.Count;
 
-        public void Clear() {
+        public void Clear()
+        {
             _buffer.Count = 0;
         }
 
         public ArraySegment<byte> Free => _buffer.Free;
         public ArraySegment<byte> Formatted => _buffer.Full;
 
-        public TextEncoder Encoder => _encoder;
+        public SymbolTable SymbolTable => _symbolTable;
 
-        public Span<byte> Buffer => Free.AsSpan();
-
-        void IOutput.Enlarge(int desiredBufferLength)
+        public Memory<byte> GetMemory(int minimumLength = 0)
         {
-            if (desiredBufferLength < 1) desiredBufferLength = 1;
-            var doubleCount = _buffer.Free.Count * 2;
-            int newSize = desiredBufferLength>doubleCount?desiredBufferLength:doubleCount;
-            var newArray = _pool.Rent(newSize + _buffer.Count);
-            var oldArray = _buffer.Resize(newArray);
-            _pool.Return(oldArray);
+            if (minimumLength < 1) minimumLength = 1;
+            if (minimumLength > _buffer.FreeCount)
+            {
+                int doubleCount = _buffer.FreeCount * 2;
+                int newSize = minimumLength > doubleCount ? minimumLength : doubleCount;
+                byte[] newArray = _pool.Rent(newSize + _buffer.Count);
+                byte[] oldArray = _buffer.Resize(newArray);
+                _pool.Return(oldArray);
+            }
+            return _buffer.FreeMemory;
         }
 
-        void IOutput.Advance(int bytes)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Span<byte> GetSpan(int minimumLength = 0)
+        {
+            if (minimumLength < 1) minimumLength = 1;
+            if (minimumLength > _buffer.FreeCount)
+            {
+                int doubleCount = _buffer.FreeCount * 2;
+                int newSize = minimumLength > doubleCount ? minimumLength : doubleCount;
+                byte[] newArray = _pool.Rent(newSize + _buffer.Count);
+                byte[] oldArray = _buffer.Resize(newArray);
+                _pool.Return(oldArray);
+            }
+            return _buffer.FreeSpan;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Advance(int bytes)
         {
             _buffer.Count += bytes;
-            if(_buffer.Count > _buffer.Count)
+            if (_buffer.Count > _buffer.Capacity)
             {
-                throw new InvalidOperationException("More bytes commited than returned from FreeBuffer");
+                FormatterThrowHelper.ThrowInvalidOperationException("More bytes commited than returned from FreeBuffer");
             }
+        }
+        public int MaxBufferSize { get; } = Int32.MaxValue;
+
+        public void Dispose()
+        {
+            byte[] array = _buffer.Items;
+            _buffer.Items = null;
+            _pool.Return(array);
         }
     }
 }
